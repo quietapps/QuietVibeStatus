@@ -1,0 +1,54 @@
+#!/bin/sh
+# Quiet Vibe Status — agent hook bridge.
+#
+# Installed into each CLI's hook config. Reads the hook payload on stdin, forwards it to the app
+# over a Unix socket together with the terminal identity visible in this process's environment,
+# and prints the app's reply on stdout so the agent can act on it.
+#
+# Design rule: this script must NEVER be able to block or break an agent. Every failure path
+# exits 0 with empty output, which the agent treats as "hook had no opinion".
+
+SOCKET="${QVS_SOCKET:-$HOME/.quietvibestatus/run/bridge.sock}"
+SOURCE="claude"
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --source) SOURCE="$2"; shift 2 ;;
+    --source=*) SOURCE="${1#--source=}"; shift ;;
+    *) shift ;;
+  esac
+done
+
+payload=$(cat)
+[ -z "$payload" ] && exit 0
+[ -S "$SOCKET" ] || exit 0
+
+# JSON-escape a shell value: backslashes, quotes, then drop control characters.
+esc() {
+  printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' | tr -d '\000-\037'
+}
+
+# Raw JSON is whitespace-insensitive outside string literals, and literal newlines cannot appear
+# inside a JSON string, so flattening to one line is safe.
+payload=$(printf '%s' "$payload" | tr '\n\r' '  ')
+
+envelope=$(printf '{"v":1,"source":"%s","env":{"term_program":"%s","term_session_id":"%s","iterm_session_id":"%s","window_id":"%s","tmux":"%s","tmux_pane":"%s","ghostty":"%s","pid":"%s","cwd":"%s"},"payload":%s}' \
+  "$(esc "$SOURCE")" \
+  "$(esc "${TERM_PROGRAM:-}")" \
+  "$(esc "${TERM_SESSION_ID:-}")" \
+  "$(esc "${ITERM_SESSION_ID:-}")" \
+  "$(esc "${WINDOWID:-}")" \
+  "$(esc "${TMUX:-}")" \
+  "$(esc "${TMUX_PANE:-}")" \
+  "$(esc "${GHOSTTY_RESOURCES_DIR:-}")" \
+  "$(esc "$PPID")" \
+  "$(esc "$PWD")" \
+  "$payload")
+
+# One line in, one line out. The app closes the connection when it has answered, which is what
+# ends `nc`. If the app dies mid-wait we get EOF and an empty reply — the agent then falls back
+# to its own terminal prompt.
+reply=$(printf '%s\n' "$envelope" | nc -U "$SOCKET" 2>/dev/null | head -n 1)
+
+[ -n "$reply" ] && printf '%s\n' "$reply"
+exit 0

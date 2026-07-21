@@ -1,0 +1,49 @@
+#!/bin/sh
+# Quiet Vibe Status — status line bridge.
+#
+# Claude Code publishes subscription rate limits only through the status line's stdin payload, so
+# this script sits in front of whatever status line the user already had: it caches the rate-limit
+# fields for the app, then hands the identical payload to the original command and prints its
+# output unchanged. Removing this script leaves the user's own status line exactly as it was.
+
+CACHE_DIR="$HOME/.quietvibestatus/cache"
+CACHE_FILE="$CACHE_DIR/usage.json"
+ORIGINAL_FILE="$CACHE_DIR/original-statusline-command"
+
+payload=$(cat)
+[ -z "$payload" ] && exit 0
+
+mkdir -p "$CACHE_DIR" 2>/dev/null
+
+# Pull the rate-limit block out without needing jq, which is not guaranteed to be installed.
+# Values are plain JSON numbers, so a targeted grep is enough and cannot match inside a string.
+extract() {
+  printf '%s' "$payload" \
+    | tr -d ' \n' \
+    | sed -n "s/.*\"$1\":{\([^}]*\)}.*/\1/p" \
+    | head -n 1
+}
+
+five_hour=$(extract five_hour)
+seven_day=$(extract seven_day)
+
+if [ -n "$five_hour" ] || [ -n "$seven_day" ]; then
+  {
+    printf '{"updated_at":%s,"rate_limits":{' "$(date +%s)"
+    [ -n "$five_hour" ] && printf '"five_hour":{%s}' "$five_hour"
+    [ -n "$five_hour" ] && [ -n "$seven_day" ] && printf ','
+    [ -n "$seven_day" ] && printf '"seven_day":{%s}' "$seven_day"
+    printf '}}\n'
+  } > "$CACHE_FILE.tmp" 2>/dev/null && mv "$CACHE_FILE.tmp" "$CACHE_FILE" 2>/dev/null
+fi
+
+# Chain to the user's original status line, if they had one.
+if [ -f "$ORIGINAL_FILE" ]; then
+  original=$(cat "$ORIGINAL_FILE")
+  if [ -n "$original" ]; then
+    printf '%s' "$payload" | sh -c "$original"
+    exit $?
+  fi
+fi
+
+exit 0
