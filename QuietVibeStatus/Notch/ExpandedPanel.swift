@@ -59,9 +59,19 @@ struct ExpandedPanel: View {
                             .id("approval-\(request.id)")
                     }
 
-                    ForEach(store.visibleSessions) { session in
-                        SessionCard(session: session)
-                            .id(session.id)
+                    if prefs.groupByProject {
+                        ForEach(store.groupedSessions) { group in
+                            ProjectGroupHeader(group: group)
+                            ForEach(group.sessions) { session in
+                                SessionCard(session: session)
+                                    .id(session.id)
+                            }
+                        }
+                    } else {
+                        ForEach(store.visibleSessions) { session in
+                            SessionCard(session: session)
+                                .id(session.id)
+                        }
                     }
                 }
                 .padding(Theme.s3)
@@ -80,6 +90,36 @@ struct ExpandedPanel: View {
                 guard let id else { return }
                 withAnimation(Theme.ease) { proxy.scrollTo(id, anchor: .top) }
             }
+        }
+    }
+}
+
+/// A small heading above the cards of one project.
+///
+/// Suppressed for single-session projects: a heading over one card is noise, and the card already
+/// names its own project. It earns its place only when it's collecting several cards together.
+private struct ProjectGroupHeader: View {
+    let group: SessionStore.ProjectGroup
+
+    var body: some View {
+        if group.sessions.count > 1 {
+            HStack(spacing: Theme.s1) {
+                Image(systemName: "folder")
+                    .font(.system(size: 9))
+                Text(group.name)
+                    .font(Theme.ui(10, weight: .semibold))
+                Text("\(group.sessions.count)")
+                    .font(Theme.mono(9, weight: .medium))
+                    .foregroundStyle(Theme.onDark3)
+                    .padding(.horizontal, 4)
+                    .padding(.vertical, 1)
+                    .background(
+                        Capsule().fill(Theme.onDark3.opacity(0.15))
+                    )
+                Spacer()
+            }
+            .foregroundStyle(Theme.onDark2)
+            .padding(.top, Theme.s1)
         }
     }
 }

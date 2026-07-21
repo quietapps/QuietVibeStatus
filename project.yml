@@ -13,8 +13,8 @@ settings:
     CODE_SIGN_STYLE: Automatic
     CODE_SIGN_IDENTITY: "-"
     ENABLE_HARDENED_RUNTIME: false
-    MARKETING_VERSION: "1.0.2"
-    CURRENT_PROJECT_VERSION: "3"
+    MARKETING_VERSION: "1.0.3"
+    CURRENT_PROJECT_VERSION: "4"
 
 targets:
   QuietVibeStatus:
@@ -37,3 +37,28 @@ targets:
         INFOPLIST_KEY_CFBundleDisplayName: "Quiet Vibe Status"
         INFOPLIST_KEY_NSHumanReadableCopyright: "MIT License — Quiet Apps"
         INFOPLIST_KEY_NSAppleEventsUsageDescription: "Quiet Vibe Status uses AppleScript to focus the terminal tab that your agent is running in."
+
+  QuietVibeStatusTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: Tests
+    dependencies:
+      - target: QuietVibeStatus
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.quiet.QuietVibeStatusTests
+        GENERATE_INFOPLIST_FILE: true
+
+schemes:
+  QuietVibeStatus:
+    build:
+      targets:
+        QuietVibeStatus: all
+        QuietVibeStatusTests: [test]
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets:
+        - QuietVibeStatusTests

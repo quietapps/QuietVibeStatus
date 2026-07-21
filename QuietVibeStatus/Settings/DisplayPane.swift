@@ -115,6 +115,16 @@ struct DisplayPane: View {
                     title: "Show agent activity detail",
                     isOn: $prefs.showActivityDetail
                 )
+                SettingsToggleRow(
+                    title: "Show token cost",
+                    subtitle: "Add a chip with the session's token spend, estimated at list prices.",
+                    isOn: $prefs.showSessionCost
+                )
+                SettingsToggleRow(
+                    title: "Group cards by project",
+                    subtitle: "Collect sessions from the same directory under one heading, instead of a flat list.",
+                    isOn: $prefs.groupByProject
+                )
 
                 SessionCardPreview()
                     .padding(12)

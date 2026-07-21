@@ -30,6 +30,42 @@ enum TranscriptReader {
         return model
     }
 
+    /// Total token usage recorded in a transcript.
+    ///
+    /// Unlike the model lookup this reads the whole file — usage accumulates per assistant message,
+    /// so a tail scan would undercount a long session. Callers must keep it off the hot path.
+    static func usage(fromTranscriptAt path: String) -> TokenUsage? {
+        guard let handle = FileHandle(forReadingAtPath: path) else { return nil }
+        defer { try? handle.close() }
+        guard let data = try? handle.readToEnd(),
+              let text = String(data: data, encoding: .utf8)
+        else { return nil }
+
+        var total = TokenUsage()
+        var found = false
+
+        for line in text.components(separatedBy: .newlines) {
+            guard line.contains("\"usage\"") else { continue }
+            guard let lineData = line.data(using: .utf8),
+                  let root = try? JSONSerialization.jsonObject(with: lineData) as? [String: Any]
+            else { continue }
+
+            // Usage hangs off the assistant message, but some agents put it at the top level.
+            let message = root["message"] as? [String: Any]
+            guard let usage = (message?["usage"] ?? root["usage"]) as? [String: Any] else { continue }
+
+            found = true
+            total = total + TokenUsage(
+                input: usage["input_tokens"] as? Int ?? 0,
+                output: usage["output_tokens"] as? Int ?? 0,
+                cacheWrite: usage["cache_creation_input_tokens"] as? Int ?? 0,
+                cacheRead: usage["cache_read_input_tokens"] as? Int ?? 0
+            )
+        }
+
+        return found ? total : nil
+    }
+
     private static func scanForModel(_ path: String) -> String? {
         guard let handle = FileHandle(forReadingAtPath: path) else { return nil }
         defer { try? handle.close() }

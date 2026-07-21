@@ -160,7 +160,28 @@ struct Session: Identifiable, Equatable {
     var worktree: String?
     var branch: String?
 
+    /// Tokens this session has spent, read from its transcript.
+    var usage: TokenUsage?
+    /// Path to the agent's transcript, so usage can be re-read as the session goes on.
+    var transcriptPath: String?
+
+    /// Estimated dollar cost at list prices — nil when the model is unknown or unpriced.
+    var estimatedCost: Double? {
+        guard let usage else { return nil }
+        return ModelPricing.cost(of: usage, model: rawModel ?? model)
+    }
+
+    /// The unshortened model id, kept because pricing matches on it.
+    var rawModel: String?
+
     var terminal = TerminalIdentity()
+    /// True once two separate events reported the same `terminal.pid`.
+    ///
+    /// Most CLIs spawn the hook straight from the long-lived agent process, so its pid is a good
+    /// liveness signal. Some wrap it in a throwaway shell instead, whose pid dies immediately and
+    /// differs every event — treating that as "agent exited" would delete cards for live sessions,
+    /// so liveness is only trusted after a pid has repeated.
+    var pidIsStable = false
     /// Bundle id of the app this session lives in, resolved while the hook was still running.
     var hostBundleID: String?
     var subagents: [Subagent] = []

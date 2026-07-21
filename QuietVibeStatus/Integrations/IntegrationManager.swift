@@ -178,6 +178,7 @@ final class IntegrationManager: ObservableObject {
         }
 
         refreshStatus()
+        refreshRivalHooks()
     }
 
     func refreshStatus() {
@@ -257,6 +258,45 @@ final class IntegrationManager: ObservableObject {
         root = setValue(hooks, at: integration.hooksKeyPath, in: root)
         try writeConfig(root, to: integration)
         Log.integrations.info("removed hooks for \(integration.displayName)")
+    }
+
+    // MARK: - Rival monitors
+
+    /// Hooks from other agent monitors found in the configs we share with them.
+    @Published private(set) var rivalHooks: [RivalHook] = []
+
+    func refreshRivalHooks() {
+        rivalHooks = RivalHookScanner.scan(integrations.filter(\.isInstalled))
+    }
+
+    /// Strip one rival's hooks from the config it was found in.
+    ///
+    /// Same merge rules as our own entries: only commands carrying that monitor's marker are
+    /// touched, the user's other hooks are left exactly as they were, and a backup is kept.
+    func removeRivalHooks(_ rival: RivalHook) throws {
+        guard let integration = integrations.first(where: { $0.configURL.path == rival.configPath })
+        else { return }
+
+        guard var root = try? readConfig(integration),
+              var hooks = value(at: integration.hooksKeyPath, in: root) as? [String: Any]
+        else { return }
+
+        for (event, value) in hooks {
+            guard var entries = value as? [[String: Any]] else { continue }
+            entries.removeAll { entry in
+                RivalHookScanner.commands(in: entry).contains { $0.contains(rival.marker) }
+            }
+            if entries.isEmpty {
+                hooks.removeValue(forKey: event)
+            } else {
+                hooks[event] = entries
+            }
+        }
+
+        root = setValue(hooks, at: integration.hooksKeyPath, in: root)
+        try writeConfig(root, to: integration)
+        Log.integrations.info("removed \(rival.displayName) hooks from \(integration.displayName)")
+        refreshRivalHooks()
     }
 
     /// Remove every trace of the app from every config — used by Settings → uninstall.

@@ -9,17 +9,67 @@ import Foundation
 final class SessionStore: ObservableObject {
     static let shared = SessionStore()
 
-    @Published private(set) var sessions: [Session] = []
+    @Published private(set) var sessions: [Session] = [] {
+        didSet { scheduleSave() }
+    }
     /// Session id that should be scrolled to and highlighted, set when something demands attention.
     @Published var highlightedID: String?
 
     private var cleanupTimer: Timer?
+    private var saveTask: Task<Void, Never>?
+    /// When each session's transcript was last parsed for token usage.
+    private var lastUsageReads: [String: Date] = [:]
     private let prefs = Preferences.shared
 
     private init() {
         cleanupTimer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.pruneStaleSessions() }
         }
+    }
+
+    // MARK: - Persistence
+
+    /// Put back the cards for agents that kept running while the app was quit.
+    ///
+    /// Called once at launch, before the bridge starts listening, so a hook arriving in the same
+    /// moment updates the restored card rather than creating a second one for the same session.
+    func restore() {
+        guard prefs.restoreSessionsOnLaunch else {
+            SessionPersistence.clear()
+            return
+        }
+        guard sessions.isEmpty else { return }
+
+        let restored = SessionPersistence.load()
+            .filter { !archived.contains($0.id) && !isFiltered(cwd: $0.cwd) }
+        guard !restored.isEmpty else { return }
+
+        sessions = restored
+        for session in restored {
+            resolveGitInfo(for: session.id, cwd: session.cwd)
+        }
+        Log.bridge.info("restored \(restored.count) live session(s)")
+    }
+
+    /// Write the session list out shortly after it changes.
+    ///
+    /// Debounced because hook events arrive in bursts — a tool call can touch the store several
+    /// times in a second, and none of those intermediate states is worth a disk write.
+    private func scheduleSave() {
+        guard prefs.restoreSessionsOnLaunch else { return }
+        saveTask?.cancel()
+        saveTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(2))
+            guard !Task.isCancelled, let self else { return }
+            SessionPersistence.save(self.sessions)
+        }
+    }
+
+    /// Flush immediately, for app termination where a debounced write would never land.
+    func saveNow() {
+        saveTask?.cancel()
+        guard prefs.restoreSessionsOnLaunch else { return }
+        SessionPersistence.save(sessions)
     }
 
     // MARK: - Ordering
@@ -38,6 +88,38 @@ final class SessionStore: ObservableObject {
 
     var blockedSessions: [Session] {
         visibleSessions.filter { $0.state.isBlocked }
+    }
+
+    /// One project's sessions, in panel order.
+    struct ProjectGroup: Identifiable {
+        var id: String { cwd }
+        let cwd: String
+        let name: String
+        let sessions: [Session]
+    }
+
+    /// `visibleSessions` bucketed by working directory.
+    ///
+    /// Several agents in one repository is the normal case, not the exception, and a flat list of
+    /// identically-titled cards reads as duplicates. Groups keep the existing sort: a project is
+    /// ordered by its most urgent session, and sessions keep their order inside it.
+    var groupedSessions: [ProjectGroup] {
+        var order: [String] = []
+        var buckets: [String: [Session]] = [:]
+
+        for session in visibleSessions {
+            if buckets[session.cwd] == nil { order.append(session.cwd) }
+            buckets[session.cwd, default: []].append(session)
+        }
+
+        return order.map { cwd in
+            let sessions = buckets[cwd] ?? []
+            return ProjectGroup(
+                cwd: cwd,
+                name: sessions.first?.projectName ?? (cwd as NSString).lastPathComponent,
+                sessions: sessions
+            )
+        }
     }
 
     var hasActiveWork: Bool {
@@ -62,7 +144,18 @@ final class SessionStore: ObservableObject {
     @discardableResult
     func upsert(id: String, agent: AgentKind, cwd: String, mutate: (inout Session) -> Void) -> Session? {
         if let idx = index(of: id) {
+            let previousPID = sessions[idx].terminal.pid
             mutate(&sessions[idx])
+            if let pid = sessions[idx].terminal.pid, pid == previousPID {
+                sessions[idx].pidIsStable = true
+            }
+            // Helper sessions (title generators, memory writers) announce themselves with
+            // `SessionStart` before their prompt exists, so the prompt filters cannot see them at
+            // creation time. Re-check on every event: the prompt arrives a moment later.
+            guard !isFiltered(prompt: sessions[idx].lastPrompt) else {
+                sessions.remove(at: idx)
+                return nil
+            }
             sessions[idx].updatedAt = Date()
             resolveHostIfNeeded(&sessions[idx])
             return sessions[idx]
@@ -108,9 +201,29 @@ final class SessionStore: ObservableObject {
         sessions[idx].worktree = info.worktree
     }
 
-    func setModel(_ model: String, for id: String) {
+    func setModel(_ model: String, raw: String? = nil, for id: String) {
         guard let idx = index(of: id) else { return }
         sessions[idx].model = model
+        if let raw { sessions[idx].rawModel = raw }
+    }
+
+    func setUsage(_ usage: TokenUsage, for id: String) {
+        guard let idx = index(of: id) else { return }
+        sessions[idx].usage = usage
+    }
+
+    /// Record where a session's transcript lives, and report whether a usage re-read is due.
+    ///
+    /// Reading usage means parsing the whole transcript, which grows to megabytes, while hooks
+    /// arrive many times a second. Rate-limiting here keeps that cost off the event path.
+    func noteTranscriptPath(_ path: String, for id: String) -> Bool {
+        guard let idx = index(of: id) else { return false }
+        sessions[idx].transcriptPath = path
+
+        let now = Date()
+        if let last = lastUsageReads[id], now.timeIntervalSince(last) < 20 { return false }
+        lastUsageReads[id] = now
+        return true
     }
 
     func setState(_ state: SessionState, for id: String) {
@@ -123,7 +236,14 @@ final class SessionStore: ObservableObject {
     }
 
     func remove(id: String) {
+        // Log the outcome on the way out — this is the one place every disappearance funnels
+        // through (agent close, manual archive, dead process, stale sweep), so recording here
+        // means no ending is missed and none is double-counted.
+        for session in sessions where session.id == id || session.parentID == id {
+            SessionHistory.shared.record(session)
+        }
         sessions.removeAll { $0.id == id || $0.parentID == id }
+        lastUsageReads.removeValue(forKey: id)
     }
 
     /// The agent reported this session finished, so forget any archive entry for it.
@@ -222,10 +342,47 @@ final class SessionStore: ObservableObject {
 
     /// Sessions from agents without a reliable close signal linger forever otherwise. Sessions
     /// that finished cleanly age out much faster, since their card has already been read.
+    /// Drop sessions whose agent process is gone.
+    ///
+    /// A closed terminal tab or a killed CLI never runs its exit hooks, so `SessionEnd` never
+    /// arrives and the card sits at "working" indefinitely. Blocked sessions are included: nobody
+    /// can answer an approval whose agent already exited.
+    func pruneDeadSessions() {
+        retire { session in
+            guard session.pidIsStable, let pid = session.terminal.pid else { return false }
+            guard !ProcessTree.isAlive(pid: pid_t(pid)) else { return false }
+            PendingRequestRegistry.shared.cancel(sessionID: session.id)
+            return true
+        }
+    }
+
+    /// Remove every session matching `shouldRetire`, logging each one to history first.
+    ///
+    /// Every removal path goes through here so an ending is never dropped from the log just
+    /// because it happened via a sweep rather than a `SessionEnd` event.
+    private func retire(where shouldRetire: (Session) -> Bool) {
+        var remaining: [Session] = []
+        remaining.reserveCapacity(sessions.count)
+
+        for session in sessions {
+            if shouldRetire(session) {
+                SessionHistory.shared.record(session)
+                lastUsageReads.removeValue(forKey: session.id)
+            } else {
+                remaining.append(session)
+            }
+        }
+
+        guard remaining.count != sessions.count else { return }
+        sessions = remaining
+    }
+
     private func pruneStaleSessions() {
+        pruneDeadSessions()
+
         let now = Date()
         let idleLimit = prefs.idleCleanupSeconds
-        sessions.removeAll { session in
+        retire { session in
             guard !session.state.isBlocked else { return false }
             let age = now.timeIntervalSince(session.updatedAt)
             switch session.state {

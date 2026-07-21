@@ -25,6 +25,21 @@ enum ProcessTree {
         return nil
     }
 
+    /// Whether the process still exists.
+    ///
+    /// Used to retire cards for agents that died without sending `SessionEnd` — a closed terminal
+    /// tab or a killed CLI never runs its exit hooks, so the card would otherwise sit at "working"
+    /// until the stale sweep gave up on it an hour later.
+    static func isAlive(pid: pid_t) -> Bool {
+        guard pid > 1 else { return false }
+        var info = kinfo_proc()
+        var size = MemoryLayout<kinfo_proc>.size
+        var mib: [Int32] = [CTL_KERN, KERN_PROC, KERN_PROC_PID, pid]
+        guard sysctl(&mib, 4, &info, &size, nil, 0) == 0, size > 0 else { return false }
+        // A zombie still answers sysctl but is on its way out.
+        return info.kp_proc.p_stat != SZOMB
+    }
+
     static func parentPID(of pid: pid_t) -> pid_t? {
         var info = kinfo_proc()
         var size = MemoryLayout<kinfo_proc>.size

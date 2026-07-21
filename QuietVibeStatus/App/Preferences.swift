@@ -8,7 +8,14 @@ import SwiftUI
 final class Preferences: ObservableObject {
     static let shared = Preferences()
 
-    private let defaults = UserDefaults.standard
+    /// Tests run inside the app as their host, so writing to the standard defaults would edit the
+    /// settings of the copy the user actually runs. They get a throwaway suite instead.
+    private let defaults: UserDefaults = {
+        guard AppDelegate.isRunningTests else { return .standard }
+        let suite = UserDefaults(suiteName: "app.quiet.QuietVibeStatus.tests") ?? .standard
+        suite.removePersistentDomain(forName: "app.quiet.QuietVibeStatus.tests")
+        return suite
+    }()
 
     private init() {}
 
@@ -32,10 +39,22 @@ final class Preferences: ObservableObject {
     @Stored("dismissRevealOnOutsideClick", default: false) var dismissRevealOnOutsideClick: Bool
     /// Seconds before a session with no clear close signal is cleaned up.
     @Stored("idleCleanupSeconds", default: 7200.0) var idleCleanupSeconds: Double
+    /// Whether live session cards survive a restart of the app.
+    ///
+    /// Agents keep running while the app is quit or updated, so without this the panel comes back
+    /// empty. Turning it off also deletes the saved file, which is the setting to use if you would
+    /// rather no prompt text ever touched the disk.
+    @Stored("restoreSessionsOnLaunch", default: true) var restoreSessionsOnLaunch: Bool
+    /// Whether finished sessions are logged for later review.
+    @Stored("keepSessionHistory", default: true) var keepSessionHistory: Bool
 
     // MARK: General — interaction
 
     @Stored("disableClickToJump", default: false) var disableClickToJump: Bool
+    /// Minutes an unanswered approval holds the agent's hook open before it is handed back to the
+    /// agent's own prompt. `0` waits forever, which is what the hook timeout allows but also means
+    /// a card you never saw can block an agent all day.
+    @Stored("approvalTimeoutMinutes", default: 15.0) var approvalTimeoutMinutes: Double
 
     // MARK: Notifications
 
@@ -96,6 +115,8 @@ final class Preferences: ObservableObject {
     @Stored("showWorktree", default: true) var showWorktree: Bool
     @Stored("showModel", default: true) var showModel: Bool
     @Stored("showSubagents", default: true) var showSubagents: Bool
+    @Stored("groupByProject", default: false) var groupByProject: Bool
+    @Stored("showSessionCost", default: true) var showSessionCost: Bool
     @Stored("showActivityDetail", default: true) var showActivityDetail: Bool
 
     /// Manual nudges for MacBook models whose notch metrics we can't read exactly.

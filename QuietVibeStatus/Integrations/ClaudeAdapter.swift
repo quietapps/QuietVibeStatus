@@ -17,7 +17,7 @@ struct ClaudeAdapter: AgentAdapter {
 
         switch event {
         case "SessionStart":
-            await MainActor.run {
+            let created = await MainActor.run {
                 SessionStore.shared.upsert(id: sessionID, agent: .claude, cwd: cwd) { session in
                     session.terminal = identity
                     session.model = ActivityFormatter.modelLabel(payload["model"].stringValue)
@@ -26,10 +26,10 @@ struct ClaudeAdapter: AgentAdapter {
                     session.lastActivity = nil
                 }
             }
-            SoundEngine.shared.play(.sessionStart)
+            if created != nil { await SessionSoundGate.playStart(for: sessionID) }
 
         case "UserPromptSubmit":
-            await MainActor.run {
+            let updated = await MainActor.run {
                 SessionStore.shared.upsert(id: sessionID, agent: .claude, cwd: cwd) { session in
                     session.terminal = identity
                     session.lastPrompt = payload["prompt_text"].stringValue
@@ -39,6 +39,7 @@ struct ClaudeAdapter: AgentAdapter {
                     session.lastActivity = nil
                 }
             }
+            guard updated != nil else { return HookResponse.empty }
             SoundEngine.shared.play(.taskAcknowledge)
             await PromptRateMonitor.shared.record(sessionID: sessionID)
 
@@ -145,6 +146,7 @@ struct ClaudeAdapter: AgentAdapter {
         // above is what creates the session, and writing a model to a session that doesn't exist
         // yet is a silent no-op.
         await resolveModelIfNeeded(sessionID: sessionID, payload: payload)
+        await refreshUsage(sessionID: sessionID, payload: payload)
 
         return HookResponse.empty
     }
@@ -166,7 +168,29 @@ struct ClaudeAdapter: AgentAdapter {
 
         guard let label = ActivityFormatter.modelLabel(raw) else { return }
         await MainActor.run {
-            SessionStore.shared.setModel(label, for: sessionID)
+            SessionStore.shared.setModel(label, raw: raw, for: sessionID)
+        }
+    }
+
+    /// Re-read token usage from the transcript.
+    ///
+    /// Throttled inside the store rather than here: usage only moves when the agent completes a
+    /// turn, but hooks fire many times a second, and this reads the whole file.
+    private func refreshUsage(sessionID: String, payload: JSONValue) async {
+        guard let path = payload["transcript_path"].stringValue else { return }
+
+        let due = await MainActor.run {
+            SessionStore.shared.noteTranscriptPath(path, for: sessionID)
+        }
+        guard due else { return }
+
+        let usage = await Task.detached(priority: .utility) {
+            TranscriptReader.usage(fromTranscriptAt: path)
+        }.value
+
+        guard let usage else { return }
+        await MainActor.run {
+            SessionStore.shared.setUsage(usage, for: sessionID)
         }
     }
 

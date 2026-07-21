@@ -69,6 +69,24 @@ struct GeneralPane: View {
                     .labelsHidden()
                     .frame(width: 160)
                 }
+                SettingsToggleRow(
+                    title: "Restore sessions on launch",
+                    subtitle: "Agents keep running while the app is quit or updating. Cards for sessions whose process is still alive come back; the rest are dropped. Turning this off deletes the saved file.",
+                    isOn: $prefs.restoreSessionsOnLaunch
+                )
+                SettingsRow(
+                    title: "Hand approvals back after",
+                    subtitle: "An unanswered request blocks the agent for as long as its card sits there. When this elapses the agent is released and asks in its own terminal instead — nothing is approved or denied for you."
+                ) {
+                    Picker("", selection: $prefs.approvalTimeoutMinutes) {
+                        Text("5 minutes").tag(5.0)
+                        Text("15 minutes (default)").tag(15.0)
+                        Text("1 hour").tag(60.0)
+                        Text("Never").tag(0.0)
+                    }
+                    .labelsHidden()
+                    .frame(width: 160)
+                }
             }
 
             SettingsGroup(title: "Interaction") {

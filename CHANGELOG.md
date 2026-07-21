@@ -2,6 +2,61 @@
 
 All notable changes to Quiet Vibe Status. Dates are the day the version was cut.
 
+## 1.0.3 — 21 Jul 2026
+
+Duplicate cards, stuck cards, session history and cost, and the first tests.
+
+### Changed
+
+- **App icon** — dropped the notch and the terminal prompt entirely. Three activity waves fade
+  from pale to mint as they travel and settle into a single glowing dot — the signal, and the one
+  thing in it that needs you
+
+### Fixed
+
+- **Duplicate session cards, and the session-start sound playing twice** — agents spawn helper
+  sessions (title generators, memory writers) in your own project directory. They announce
+  themselves with `SessionStart` before their prompt exists, so the prompt filters could not judge
+  them yet, and once the prompt did arrive the store's update path never re-checked the filters. The
+  helper's card stayed forever, without a model, looking exactly like a duplicate of your real
+  session. Filters now run on every event, and the start chime waits to see whether the session
+  survives them
+- **Cards stuck at "working" after a session ended** — closing a terminal tab or killing the CLI
+  skips its exit hooks, so `SessionEnd` never arrives and the card sat there for an hour. Sessions
+  are now checked against the agent's own process and retire within 30 seconds, or instantly when
+  you open the panel. A pid is only trusted as a liveness signal once the same one has been seen
+  twice, so a CLI that runs hooks through a throwaway shell never has its live cards culled
+
+### Added
+
+- **Group cards by project** — an optional heading collects sessions from the same directory
+  instead of a flat list of identically-titled cards. Off by default; toggle in Display
+- **Session history** — finished sessions are logged with duration, model, token count, and an
+  estimated cost, in a new History settings pane with a seven-day summary. Stored locally; toggle
+  in History
+- **Per-session token cost** — a card chip shows the session's token spend, with the input /
+  output / cache breakdown on hover. Cost is estimated at published list prices, not a bill —
+  subscription plans don't charge per token. Toggle in Display
+- **Both quotas at once** — in Auto mode the usage badge now shows Claude and Codex side by side
+  when both have reported, rather than only the most recent. The quiet provider is often the one
+  about to run out
+- **Usage badge names its provider** — a five-hour percentage means nothing without saying whose
+  quota it is, and Claude's and Codex's numbers look identical
+- **Approvals hand themselves back** — permission hooks are installed with a 24-hour timeout, so an
+  unanswered card blocked the agent for the rest of the day. After a configurable wait (15 minutes
+  by default) the hook is released and the agent asks in its own terminal instead. Nothing is ever
+  approved or denied on your behalf
+- **Sessions survive a restart** — agents keep working while the app is quit or updating, and their
+  `SessionStart` has long passed, so the panel came back empty. Cards are restored for sessions
+  whose process is still alive. Settings → General turns it off and deletes the file
+- **Competing monitor detection** — Settings → Integrations flags hooks belonging to another agent
+  monitor found in the same config, including one left behind by an app that was uninstalled, and
+  removes just those entries on request
+- **Test suite** — 88 tests over the adapters, hook response contracts, session filtering and
+  liveness, approval timeouts, persistence, the config scanner, model pricing, session history, and
+  project grouping. The Codex, Gemini, and Cursor adapters now have coverage without needing a
+  live agent
+
 ## 1.0.2 — 21 Jul 2026
 
 App icon redesign, take two.

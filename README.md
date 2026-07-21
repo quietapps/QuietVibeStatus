@@ -35,15 +35,19 @@ in. Click a card and the exact terminal tab comes forward. No cloud. No account.
 
 ## Features
 
-**Current release:** version **1.0.2**, build **3** — see [CHANGELOG](CHANGELOG.md) for per-build notes
+**Current release:** version **1.0.3**, build **4** — see [CHANGELOG](CHANGELOG.md) for per-build notes
 
 ### Monitor
 
-- **Live session cards** — project, worktree branch, the prompt you typed, current activity, model, and host terminal, all driven by real agent hook events
+- **Live session cards** — project, worktree branch, the prompt you typed, current activity, model, host terminal, and token cost, all driven by real agent hook events
+- **Group by project** — collect sessions from the same directory under one heading
+- **Session history** — finished sessions logged with duration, model, tokens, and an estimated cost, with a seven-day summary
 - **Subagents nest** under their parent session
 - **Smart sort** — anything blocking on you floats to the top
 - **Session recap** from the agent's final message once a card goes idle
 - **Directory and prompt filters**, with presets for the helper sessions agents spawn in the background
+- **Sessions survive a restart** — cards for agents still running come back when the app relaunches
+- **Dead sessions retire themselves** — a closed tab never sends `SessionEnd`, so cards are checked against the agent's own process
 
 ### Approve
 
@@ -52,6 +56,7 @@ in. Click a card and the exact terminal tab comes forward. No cloud. No account.
 - **Plan review** — Markdown rendering, approve, approve with auto-accepted edits, or reject with written feedback
 - **Paginated question wizard** for structured multi-question prompts, including free-text answers
 - Quitting the app mid-approval releases the agent instead of hanging it
+- **Approvals hand themselves back** after a configurable wait, so a card you never saw cannot block an agent all day
 
 ### Jump
 
@@ -70,7 +75,8 @@ in. Click a card and the exact terminal tab comes forward. No cloud. No account.
 
 - Optional status line bridge reads Claude's five-hour and seven-day limits, chaining in front of any status line you already had and passing your own output through untouched
 - Codex quota read from its own state files
-- Used or remaining display, with an Auto / Claude / Codex provider picker
+- Used or remaining display, with an Auto / Claude / Codex provider picker — Auto shows both at once
+- Per-session token cost, estimated at published list prices (a weight, not a bill — subscription plans don't charge per token)
 
 ### Native macOS feel
 
@@ -221,7 +227,8 @@ than replaced, and a `.qvs-backup` copy is kept next to each file. Settings → 
 Uninstall removes every trace.
 
 If you also run another notch agent monitor, both sets of hooks will fire and you'll see duplicate
-cards. Turn one off.
+cards. Settings → Integrations detects the common ones — including an uninstalled rival whose hooks
+were never cleaned up — and removes their entries on request, leaving the rest of the file alone.
 
 ## Permissions
 
@@ -293,7 +300,7 @@ QuietVibeStatus/
 ├── Jump/           per-terminal focus strategies
 ├── Sound/          8-bit synthesis, quiet scenes
 ├── Usage/          quota tracking, status line bridge
-├── Settings/       nine settings panes
+├── Settings/       ten settings panes
 ├── Onboarding/     first-run flow
 └── Resources/      asset catalog, bridge scripts
 Tools/              icon generator
@@ -303,11 +310,12 @@ No external dependencies — Apple frameworks only (SwiftUI, AppKit, AppleScript
 
 ## Configuration
 
-All settings are in **Settings** (menu bar icon → **Settings…**), across nine panes: **General**
-(hover, dwell, auto-hide, cleanup), **Integrations** (per-agent hook toggles, repair, uninstall),
-**Notifications** (completion behavior, quiet scenes, directory and prompt filters), **Display**
-(clean or detailed pill, panel size, card fields, notch alignment), **Sound**, **Usage**,
-**Shortcuts**, **Labs**, **About**.
+All settings are in **Settings** (menu bar icon → **Settings…**), across ten panes: **General**
+(hover, dwell, auto-hide, cleanup, session restore, approval timeout), **Integrations** (per-agent
+hook toggles, competing-monitor cleanup, repair, uninstall), **Notifications** (completion behavior,
+quiet scenes, directory and prompt filters), **Display** (clean or detailed pill, panel size, card
+fields, project grouping, token cost, notch alignment), **Sound**, **Usage**, **History** (finished
+sessions and cost summary), **Shortcuts**, **Labs**, **About**.
 
 Reset to defaults:
 
@@ -327,8 +335,12 @@ system-wide while a request is pending. It ships **off**, deliberately: a system
 ## FAQ
 
 **Does Quiet Vibe Status send my session data anywhere?**
-No. Zero network calls. Session data lives in memory and is never written to disk except the
-optional `~/.quietvibestatus/debug.log`.
+No. Zero network calls. Session data lives in memory. Two files are the exception, both local and
+readable only by your account: the optional `~/.quietvibestatus/debug.log`, and
+`~/.quietvibestatus/state/sessions.json`, which holds live session cards so they survive a restart
+of the app, and `~/.quietvibestatus/state/history.json`, the finished-session log. Turn off
+**Settings → General → Restore sessions on launch** or **Settings → History → Keep session history**
+to delete each file and stop it being written.
 
 **Can it break my agent's hooks?**
 The bridge is designed to fail safe. If the socket is missing, the app is quit, or anything goes

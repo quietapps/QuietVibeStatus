@@ -19,10 +19,14 @@ struct UsageWindow: Equatable {
 }
 
 struct ProviderUsage: Equatable {
-    var provider: String
+    /// Which agent this quota belongs to. Carried as the enum rather than a name so the badge can
+    /// brand it — two providers' percentages look identical without it.
+    var agent: AgentKind
     var short: UsageWindow?
     var long: UsageWindow?
     var updatedAt: Date
+
+    var provider: String { agent.displayName }
 
     /// Data older than this is shown dimmed rather than hidden, so the panel never goes blank
     /// just because no session has reported in for a while.
@@ -70,6 +74,23 @@ final class UsageStore: ObservableObject {
         }
     }
 
+    /// Every provider the header should show, in the user's preferred order.
+    ///
+    /// In Auto mode both Claude and Codex are shown when both have reported — a five-hour
+    /// percentage is meaningless without knowing whose it is, and hiding one behind "most recent"
+    /// loses the case where the quiet provider is the one about to run out.
+    var displayedAll: [ProviderUsage] {
+        switch prefs.usageProvider {
+        case "claude": return [claude].compactMap { $0 }
+        case "codex": return [codex].compactMap { $0 }
+        default:
+            // Most-recently-active provider first, so the one you're using leads.
+            return [claude, codex]
+                .compactMap { $0 }
+                .sorted { $0.updatedAt > $1.updatedAt }
+        }
+    }
+
     func refresh() {
         readClaude()
         readCodex()
@@ -88,7 +109,7 @@ final class UsageStore: ObservableObject {
         let updated = (root["updated_at"] as? Double).map { Date(timeIntervalSince1970: $0) }
 
         claude = ProviderUsage(
-            provider: "Claude",
+            agent: .claude,
             short: window(from: limits?["five_hour"] as? [String: Any]),
             long: window(from: limits?["seven_day"] as? [String: Any]),
             updatedAt: updated ?? Date()
@@ -128,7 +149,7 @@ final class UsageStore: ObservableObject {
             let modified = (try? FileManager.default.attributesOfItem(atPath: url.path))?[.modificationDate] as? Date
 
             codex = ProviderUsage(
-                provider: "Codex",
+                agent: .codex,
                 short: codexWindow(from: primary),
                 long: codexWindow(from: secondary),
                 updatedAt: modified ?? Date()

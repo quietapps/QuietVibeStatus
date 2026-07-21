@@ -54,17 +54,17 @@ struct GenericAdapter: AgentAdapter {
 
         switch event {
         case .sessionStart:
-            await MainActor.run {
+            let created = await MainActor.run {
                 SessionStore.shared.upsert(id: sessionID, agent: kind, cwd: cwd) { session in
                     session.terminal = identity
                     session.model = ActivityFormatter.modelLabel(payload["model"].stringValue)
                     session.state = .idle
                 }
             }
-            SoundEngine.shared.play(.sessionStart)
+            if created != nil { await SessionSoundGate.playStart(for: sessionID) }
 
         case .promptSubmitted:
-            await MainActor.run {
+            let updated = await MainActor.run {
                 SessionStore.shared.upsert(id: sessionID, agent: kind, cwd: cwd) { session in
                     session.terminal = identity
                     session.lastPrompt = firstString(payload, promptFields)
@@ -72,6 +72,7 @@ struct GenericAdapter: AgentAdapter {
                     session.recap = nil
                 }
             }
+            guard updated != nil else { return HookResponse.empty }
             SoundEngine.shared.play(.taskAcknowledge)
 
         case .toolStarting:

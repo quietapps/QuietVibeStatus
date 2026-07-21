@@ -322,6 +322,25 @@ final class SoundEngine {
     }
 }
 
+/// Holds the session-start chime back until the session proves it is a real one.
+///
+/// Agents spawn short-lived helper sessions (title generators, memory writers) in the user's own
+/// directory. They send `SessionStart` before their prompt exists, so the prompt filters cannot
+/// judge them yet — playing immediately meant two chimes for every session the user actually
+/// started. Waiting a beat lets the prompt arrive and the filter delete the card first.
+enum SessionSoundGate {
+    private static let grace: Duration = .seconds(2)
+
+    static func playStart(for sessionID: String) async {
+        try? await Task.sleep(for: grace)
+        let survived = await MainActor.run {
+            SessionStore.shared.session(id: sessionID) != nil
+        }
+        guard survived else { return }
+        SoundEngine.shared.play(.sessionStart)
+    }
+}
+
 /// Where user-imported sound files live.
 enum CustomSounds {
     static var directory: URL {

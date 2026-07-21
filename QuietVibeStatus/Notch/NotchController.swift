@@ -258,6 +258,9 @@ final class NotchController: ObservableObject {
             // see the panel. Smart suppression exists to stop the panel *auto*-expanding over the
             // window you're working in — applying it to hover meant the notch simply refused to
             // open while an agent's app was frontmost, which is most of the time.
+            // Retire cards whose agent died since the last sweep, so the panel never opens on a
+            // session that ended a few seconds ago.
+            self.store.pruneDeadSessions()
             withAnimation(Theme.easeSlow) { self.presentation = .hovered }
         }
     }

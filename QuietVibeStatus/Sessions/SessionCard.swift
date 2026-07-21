@@ -115,6 +115,10 @@ struct SessionCard: View {
                 Chip(text: host.displayName, tint: Theme.onDark3, font: font - 2)
             }
 
+            if prefs.showSessionCost, let usage = session.usage, !usage.isEmpty {
+                CostChip(usage: usage, cost: session.estimatedCost, font: font - 2)
+            }
+
             Text(Self.elapsedText(session.startedAt))
                 .font(Theme.mono(font - 2))
                 .foregroundStyle(Theme.onDark3)
@@ -244,6 +248,45 @@ struct Chip: View {
                     .fill(tint.opacity(0.14))
             )
             .lineLimit(1)
+    }
+}
+
+/// Cost and token count for a session, with the full breakdown on hover.
+struct CostChip: View {
+    let usage: TokenUsage
+    let cost: Double?
+    var font: CGFloat = 9
+
+    var body: some View {
+        HStack(spacing: 3) {
+            Image(systemName: "circle.hexagongrid")
+                .font(.system(size: font - 1))
+            if let cost {
+                Text(ModelPricing.format(cost))
+            } else {
+                Text(ModelPricing.formatTokens(usage.totalTokens))
+            }
+        }
+        .font(Theme.mono(font, weight: .medium))
+        .foregroundStyle(Theme.onDark3)
+        .padding(.horizontal, 5)
+        .padding(.vertical, 2)
+        .background(
+            RoundedRectangle(cornerRadius: Theme.rSm - 2, style: .continuous)
+                .fill(Theme.onDark3.opacity(0.12))
+        )
+        .lineLimit(1)
+        .help(tooltip)
+    }
+
+    private var tooltip: String {
+        var lines = ["\(ModelPricing.formatTokens(usage.totalTokens)) tokens"]
+        if usage.input > 0 { lines.append("Input: \(ModelPricing.formatTokens(usage.input))") }
+        if usage.output > 0 { lines.append("Output: \(ModelPricing.formatTokens(usage.output))") }
+        if usage.cacheRead > 0 { lines.append("Cache read: \(ModelPricing.formatTokens(usage.cacheRead))") }
+        if usage.cacheWrite > 0 { lines.append("Cache write: \(ModelPricing.formatTokens(usage.cacheWrite))") }
+        if cost != nil { lines.append("Estimate at list prices — not a bill") }
+        return lines.joined(separator: "\n")
     }
 }
 

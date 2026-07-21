@@ -5,36 +5,37 @@ Follows the Quiet Apps icon rules: true n=5 superellipse on a 1024x1024 canvas w
 transparent safe-area ring, and a single vertical gradient on the icon body.
 
 Colour deviates from the Quiet Apps blue on request, and is picked to stay clear of its siblings —
-Quiet Notch is mauve, Quiet Lens is indigo, Quiet Keys is graphite and amber. Deep teal is open,
-and it reads as "live" rather than as the brand accent.
+Quiet Notch is mauve, Quiet Lens is indigo, Quiet Keys is graphite and amber. Slate indigo is open,
+and reads as "signal at night" rather than as the brand accent.
 
-Mark: a terminal prompt — ">_" — painted straight onto the icon body, with the notch bitten out of
-the top edge above it and a lit dot sitting in the notch. This is the app in one glyph: it watches
-your terminal (the prompt), it lives in the notch (the bite), and something there is waiting on you
-(the dot). The notch is a true cut-out, so the gradient shows through it the way the real hardware
-notch shows through a MacBook's lid. The prompt is painted solid, not cut, so it stays crisp and
-high-contrast at every size instead of punching through to whatever is behind the icon.
+Mark: three activity waves, fading from pale to mint as they travel, breaking into a single glowing
+dot — the agent's activity settling into the one thing that needs your attention. No notch, no
+frame: just the signal and where it lands.
 """
 
 import os
 import sys
 
 import numpy as np
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFilter
 
 CANVAS = 1024
 SS = 4  # supersample factor
 
-BODY_TOP = (20, 94, 83)      # #145E53 deep teal
-BODY_BOTTOM = (7, 40, 36)    # #072824 near-black teal
-PROMPT = (243, 247, 245)     # #F3F7F5 off-white — the painted ">_", high-contrast on the gradient
-LIT = (46, 205, 148)         # #2ECD94 the "something needs you" dot
+BODY_TOP = (42, 54, 96)       # #2A3660 slate indigo
+BODY_BOTTOM = (15, 18, 36)    # #0F1224 near-black navy
 
-NOTCH_WIDTH = 0.30    # of body width
-NOTCH_HEIGHT = 0.11   # of body height
+WAVE_START = (240, 244, 255)  # near-white — the wave as it begins
+WAVE_END = (94, 234, 212)     # #5EEAD4 mint — the wave as it settles
+DOT_COLOR = (110, 240, 200)   # mint — where the signal lands
 
-PROMPT_STROKE = 0.075   # chevron stroke width, of body height
-PROMPT_SIZE = 0.34      # chevron height, of body height
+WAVE_SPAN = 0.62        # each line's width, of body width
+WAVE_SPACING = 0.15      # vertical spacing between lines, of body height
+WAVE_STROKE = 0.028      # stroke width, of body height
+GLOW_RADIUS = 0.028      # of body width
+
+DOT_RADIUS = 0.045       # of body width
+DOT_GLOW_RADIUS = 0.05   # of body width
 
 
 def superellipse_mask(size, n=5.0):
@@ -57,73 +58,90 @@ def body(s):
     return Image.fromarray(grad, "RGBA")
 
 
-def cut_notch(alpha, s):
-    """Bite the hardware-notch silhouette straight out of the body's alpha channel."""
-    mask = Image.fromarray(alpha, "L")
-    draw = ImageDraw.Draw(mask)
-
-    notch_w = int(s * NOTCH_WIDTH)
-    notch_h = int(s * NOTCH_HEIGHT)
-    notch_x = (s - notch_w) // 2
-    radius = int(notch_h * 0.55)
-
-    draw.rounded_rectangle(
-        [notch_x, -radius, notch_x + notch_w, notch_h],
-        radius=radius,
-        fill=0,
-    )
-    draw.rectangle([notch_x, -radius, notch_x + notch_w, radius], fill=0)
-    return np.array(mask), (notch_x, notch_h, notch_x + notch_w)
+def wave_points(cx, cy, width, amplitude, wavelength, n=64):
+    xs = np.linspace(cx - width / 2, cx + width / 2, n)
+    ys = cy + amplitude * np.sin((xs - xs[0]) / wavelength * 2 * np.pi - np.pi * 0.5)
+    return list(zip(xs.tolist(), ys.tolist()))
 
 
-def draw_prompt(canvas, s):
-    """Paint the ">_" terminal prompt solid on top of the body — never a see-through hole."""
-    draw = ImageDraw.Draw(canvas)
-
-    glyph_h = s * PROMPT_SIZE
-    stroke = max(int(s * PROMPT_STROKE), 2)
-    cx, cy = s * 0.5, s * 0.58
-
-    chevron_w = glyph_h * 0.52
-    x0 = cx - glyph_h * 0.30
-    x1 = x0 + chevron_w
-    y0 = cy - glyph_h / 2
-    y1 = cy
-    y2 = cy + glyph_h / 2
-
-    draw.line([(x0, y0), (x1, y1), (x0, y2)], fill=PROMPT + (255,), width=stroke, joint="curve")
+def draw_gradient_wave(s, points, stroke, alpha_scale=1.0):
+    """A single smooth stroke, blended from pale (start) to mint (end) with a
+    horizontal alpha mask — one continuous line, no seams between colour bands."""
     cap = stroke / 2
-    for px, py in ((x0, y0), (x1, y1), (x0, y2)):
-        draw.ellipse([px - cap, py - cap, px + cap, py + cap], fill=PROMPT + (255,))
 
-    bar_x0 = x1 + glyph_h * 0.16
-    bar_x1 = bar_x0 + glyph_h * 0.30
-    bar_y0 = cy - stroke * 0.5
-    bar_y1 = cy + stroke * 0.5
-    draw.rounded_rectangle([bar_x0, bar_y0, bar_x1, bar_y1], radius=stroke / 2, fill=PROMPT + (255,))
+    pale = Image.new("RGBA", (s, s), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(pale)
+    draw.line(points, fill=WAVE_START + (255,), width=stroke, joint="curve")
+    for px, py in (points[0], points[-1]):
+        draw.ellipse([px - cap, py - cap, px + cap, py + cap], fill=WAVE_START + (255,))
+
+    mint = Image.new("RGBA", (s, s), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(mint)
+    draw.line(points, fill=WAVE_END + (255,), width=stroke, joint="curve")
+    for px, py in (points[0], points[-1]):
+        draw.ellipse([px - cap, py - cap, px + cap, py + cap], fill=WAVE_END + (255,))
+
+    x0, x1 = points[0][0], points[-1][0]
+    t = np.clip((np.arange(s) - x0) / (x1 - x0), 0, 1)
+    mask = Image.fromarray(np.tile((t * 255).astype(np.uint8), (s, 1)), "L")
+
+    blended = Image.composite(mint, pale, mask)
+    arr = np.array(blended)
+    arr[..., 3] = (arr[..., 3].astype(np.float32) * alpha_scale).astype(np.uint8)
+    return Image.fromarray(arr, "RGBA")
 
 
-def draw_notch_dot(canvas, s, notch_span):
-    """The lit dot sitting inside the notch — something in there is waiting on you."""
-    draw = ImageDraw.Draw(canvas)
-    notch_x0, notch_h, notch_x1 = notch_span
-    r = notch_h * 0.30
-    cx = notch_x1 - notch_h * 0.85
-    cy = notch_h * 0.5
-    draw.ellipse([cx - r, cy - r, cx + r, cy + r], fill=LIT + (255,))
+def signal_layer(s):
+    """Three waves stacked and fading toward the dot where the signal settles."""
+    layer = Image.new("RGBA", (s, s), (0, 0, 0, 0))
+
+    # The dot sits past the top wave's crest, both to the right and above it, so shift the
+    # wave center by half the dot's radius on each axis to keep the whole mark — waves plus
+    # dot — centered in the box rather than the waves alone.
+    cx = s * 0.5 - (s * DOT_RADIUS) / 2
+    cy = s * 0.5 + (s * DOT_RADIUS) / 2
+    stroke = max(int(s * WAVE_STROKE), 2)
+    spacing = s * WAVE_SPACING
+    top_y = cy - spacing
+
+    end_point = None
+    for i in range(3):
+        width = s * WAVE_SPAN * (1 - i * 0.10)
+        amplitude = spacing * 0.34
+        wavelength = width * 0.5
+        wave_y = top_y + i * spacing
+        alpha_scale = 1.0 - i * 0.22
+        points = wave_points(cx, wave_y, width, amplitude, wavelength)
+        wave_img = draw_gradient_wave(s, points, stroke, alpha_scale)
+        layer.alpha_composite(wave_img)
+        if i == 0:
+            end_point = points[-1]
+
+    return layer, end_point
+
+
+def draw_dot(layer, center, s):
+    """The glowing dot where the signal lands — the one thing that needs you."""
+    draw = ImageDraw.Draw(layer, "RGBA")
+    cx, cy = center
+    r = s * DOT_RADIUS
+    draw.ellipse([cx - r, cy - r, cx + r, cy + r], fill=DOT_COLOR + (255,))
 
 
 def build():
     s = int(CANVAS * 0.82) * SS
     icon = body(s)
 
-    arr = np.array(icon)
-    alpha, notch_span = cut_notch(arr[..., 3], s)
-    arr[..., 3] = alpha
-    icon = Image.fromarray(arr, "RGBA")
+    signal, dot_center = signal_layer(s)
+    draw_dot(signal, dot_center, s)
 
-    draw_prompt(icon, s)
-    draw_notch_dot(icon, s, notch_span)
+    glow = signal.filter(ImageFilter.GaussianBlur(radius=s * GLOW_RADIUS))
+    glow_arr = np.array(glow)
+    glow_arr[..., 3] = (glow_arr[..., 3].astype(np.float32) * 0.9).astype(np.uint8)
+    glow_img = Image.fromarray(glow_arr, "RGBA")
+
+    icon.alpha_composite(glow_img)
+    icon.alpha_composite(signal)
 
     # Re-apply the outer silhouette so nothing painted outside the squircle body.
     arr = np.array(icon)

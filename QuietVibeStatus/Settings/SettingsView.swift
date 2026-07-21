@@ -52,6 +52,7 @@ struct SettingsView: View {
                 case .display: DisplayPane()
                 case .sound: SoundPane()
                 case .usage: UsagePane()
+                case .history: HistoryPane()
                 case .shortcuts: ShortcutsPane()
                 case .labs: LabsPane()
                 case .about: AboutPane()
@@ -80,7 +81,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
 }
 
 enum SettingsPane: String, CaseIterable, Identifiable {
-    case general, integrations, notifications, display, sound, usage
+    case general, integrations, notifications, display, sound, usage, history
     case shortcuts, labs
     case about
 
@@ -88,7 +89,7 @@ enum SettingsPane: String, CaseIterable, Identifiable {
 
     var section: SettingsSection {
         switch self {
-        case .general, .integrations, .notifications, .display, .sound, .usage: return .main
+        case .general, .integrations, .notifications, .display, .sound, .usage, .history: return .main
         case .shortcuts, .labs: return .advanced
         case .about: return .app
         }
@@ -106,6 +107,7 @@ enum SettingsPane: String, CaseIterable, Identifiable {
         case .display: return "Display"
         case .sound: return "Sound"
         case .usage: return "Usage"
+        case .history: return "History"
         case .shortcuts: return "Shortcuts"
         case .labs: return "Labs"
         case .about: return "About"
@@ -120,6 +122,7 @@ enum SettingsPane: String, CaseIterable, Identifiable {
         case .display: return "textformat.size"
         case .sound: return "speaker.wave.2.fill"
         case .usage: return "gauge.with.needle"
+        case .history: return "clock.arrow.circlepath"
         case .shortcuts: return "keyboard.fill"
         case .labs: return "flask.fill"
         case .about: return "info.circle.fill"
@@ -134,6 +137,7 @@ enum SettingsPane: String, CaseIterable, Identifiable {
         case .display: return .purple
         case .sound: return .green
         case .usage: return .pink
+        case .history: return .teal
         case .shortcuts: return .indigo
         case .labs: return .orange
         case .about: return Theme.blue

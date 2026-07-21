@@ -34,6 +34,21 @@ struct IntegrationsPane: View {
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 
+            if !manager.rivalHooks.isEmpty {
+                SettingsGroup(title: "Another monitor is also watching") {
+                    ForEach(manager.rivalHooks) { rival in
+                        SettingsRow(
+                            title: rival.displayName,
+                            subtitle: rival.summary + ". Both apps receive every event, so you get duplicate cards, doubled sounds, and two apps racing to answer the same permission request."
+                        ) {
+                            Button("Remove hooks", role: .destructive) {
+                                try? manager.removeRivalHooks(rival)
+                            }
+                        }
+                    }
+                }
+            }
+
             SettingsGroup {
                 SettingsToggleRow(
                     title: "Auto-configure new CLIs",
@@ -57,7 +72,10 @@ struct IntegrationsPane: View {
                 }
             }
         }
-        .onAppear { manager.refreshStatus() }
+        .onAppear {
+            manager.refreshStatus()
+            manager.refreshRivalHooks()
+        }
     }
 
     private func binding(for integration: Integration) -> Binding<Bool> {
