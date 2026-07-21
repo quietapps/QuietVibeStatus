@@ -35,6 +35,21 @@ final class AdapterTests: XCTestCase {
         XCTAssertEqual(session?.terminal.pid, 4242)
     }
 
+    /// Claude re-sends `SessionStart` for the same id on resume, clear, and compact. The card is
+    /// already there, so only the first one should chime.
+    func testRepeatSessionStartChimesOnlyOnce() async {
+        SoundEngine.shared.resetPlayLog()
+
+        _ = await ClaudeAdapter().handle(HookFixtures.claude(event: "SessionStart"))
+        _ = await ClaudeAdapter().handle(HookFixtures.claude(
+            event: "SessionStart",
+            extra: ["source": "resume"]
+        ))
+
+        XCTAssertEqual(store.sessions.count, 1)
+        XCTAssertEqual(SoundEngine.shared.playCount(of: .sessionStart), 1)
+    }
+
     /// Hooks get installed mid-session and the app can launch after the agent did, so any event
     /// has to be able to materialize a card.
     func testSessionMaterializesFromAToolEventAlone() async {

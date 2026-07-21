@@ -6,12 +6,13 @@ final class OnboardingWindowController {
     static let shared = OnboardingWindowController()
 
     private var window: NSWindow?
+    private let windowDelegate = DockPolicyWindowDelegate()
 
     private init() {}
 
     func show() {
         if let window {
-            NSApp.activate(ignoringOtherApps: true)
+            DockPolicy.promote(for: window)
             window.makeKeyAndOrderFront(nil)
             return
         }
@@ -35,17 +36,18 @@ final class OnboardingWindowController {
         window.isReleasedWhenClosed = false
         window.center()
         window.contentView = NSHostingView(rootView: root)
+        window.delegate = windowDelegate
 
         self.window = window
-        NSApp.setActivationPolicy(.regular)
-        NSApp.activate(ignoringOtherApps: true)
+        DockPolicy.promote(for: window)
         window.makeKeyAndOrderFront(nil)
     }
 
+    /// Finishing from the Start button. Closing with the red X goes through the same delegate, so
+    /// either way the Dock icon leaves with the window.
     private func close() {
         window?.close()
         window = nil
-        NSApp.setActivationPolicy(.accessory)
     }
 }
 

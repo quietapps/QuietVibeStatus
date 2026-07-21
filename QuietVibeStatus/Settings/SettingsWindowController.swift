@@ -5,12 +5,13 @@ import SwiftUI
 ///
 /// The app is an accessory (`LSUIElement`), so opening Settings has to temporarily promote it to a
 /// regular app — otherwise the window opens behind whatever the user was working in and can't be
-/// focused.
+/// focused. `DockPolicy` puts it back once the window closes.
 @MainActor
 final class SettingsWindowController {
     static let shared = SettingsWindowController()
 
     private var window: NSWindow?
+    private let windowDelegate = DockPolicyWindowDelegate()
 
     private init() {}
 
@@ -41,19 +42,14 @@ final class SettingsWindowController {
         window.center()
         window.contentView = NSHostingView(rootView: root)
         window.collectionBehavior = [.moveToActiveSpace, .fullScreenAuxiliary]
+        window.delegate = windowDelegate
 
         self.window = window
         promoteAndFocus(window)
     }
 
     private func promoteAndFocus(_ window: NSWindow) {
-        NSApp.setActivationPolicy(.regular)
-        NSApp.activate(ignoringOtherApps: true)
+        DockPolicy.promote(for: window)
         window.makeKeyAndOrderFront(nil)
-    }
-
-    /// Drop back to accessory once Settings closes so the app leaves the Dock again.
-    func windowWillClose() {
-        NSApp.setActivationPolicy(.accessory)
     }
 }

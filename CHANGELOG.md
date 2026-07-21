@@ -2,6 +2,23 @@
 
 All notable changes to Quiet Vibe Status. Dates are the day the version was cut.
 
+## 1.0.6 — 21 Jul 2026
+
+### Fixed
+
+- **The Dock icon never left after closing Settings** — the app runs as a menu bar accessory, and
+  Settings promotes it to a regular app while it is open so the window can take focus. The code that
+  put it back was written but never wired to anything: no window delegate was ever set, so nothing
+  called it. The icon sat in the Dock until you quit. Onboarding had the same hole from the other
+  direction — only the Start button demoted the app, so closing that window with the red X left the
+  icon behind too. Both windows now report their own close, and the promotion is reference counted,
+  so closing one while the other is still open no longer drops the Dock icon out from under a
+  visible window
+- **The session-start sound playing twice for one session** — Claude re-sends `SessionStart` for the
+  same session id on resume, clear, and compact. The chime was gated on the store's return value,
+  which is the session on both the create and the update path, so every one of those repeats rang
+  again against a card that already existed. The gate now asks whether the card was already there
+
 ## 1.0.5 — 21 Jul 2026
 
 ### Fixed

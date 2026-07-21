@@ -17,16 +17,21 @@ struct ClaudeAdapter: AgentAdapter {
 
         switch event {
         case "SessionStart":
+            // Claude sends `SessionStart` again for the same id on resume, clear, and compact.
+            // `upsert` returns the session on both the create and the update path, so the chime has
+            // to key off whether the card already existed — otherwise one card rings twice.
             let created = await MainActor.run {
-                SessionStore.shared.upsert(id: sessionID, agent: .claude, cwd: cwd) { session in
+                let existed = SessionStore.shared.session(id: sessionID) != nil
+                let session = SessionStore.shared.upsert(id: sessionID, agent: .claude, cwd: cwd) { session in
                     session.terminal = identity
                     session.model = ActivityFormatter.modelLabel(payload["model"].stringValue)
                     session.sessionTitle = payload["session_title"].stringValue
                     session.state = .idle
                     session.lastActivity = nil
                 }
+                return session != nil && !existed
             }
-            if created != nil { await SessionSoundGate.playStart(for: sessionID) }
+            if created { await SessionSoundGate.playStart(for: sessionID) }
 
         case "UserPromptSubmit":
             let updated = await MainActor.run {

@@ -54,14 +54,19 @@ struct GenericAdapter: AgentAdapter {
 
         switch event {
         case .sessionStart:
+            // A repeat `sessionStart` for an id we already hold is a resume, not a new session.
+            // `upsert` returns the session either way, so ask the store first or the card chimes
+            // once per event instead of once per session.
             let created = await MainActor.run {
-                SessionStore.shared.upsert(id: sessionID, agent: kind, cwd: cwd) { session in
+                let existed = SessionStore.shared.session(id: sessionID) != nil
+                let session = SessionStore.shared.upsert(id: sessionID, agent: kind, cwd: cwd) { session in
                     session.terminal = identity
                     session.model = ActivityFormatter.modelLabel(payload["model"].stringValue)
                     session.state = .idle
                 }
+                return session != nil && !existed
             }
-            if created != nil { await SessionSoundGate.playStart(for: sessionID) }
+            if created { await SessionSoundGate.playStart(for: sessionID) }
 
         case .promptSubmitted:
             let updated = await MainActor.run {

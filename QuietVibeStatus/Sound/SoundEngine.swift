@@ -136,11 +136,19 @@ final class SoundEngine {
 
     private var prefs: Preferences { Preferences.shared }
 
+    /// Every `play` call, recorded before the mute checks. Lets tests assert that an event fired
+    /// exactly once without going anywhere near the audio device.
+    private var playLog: [SoundEvent] = []
+
     private init() {}
 
     // MARK: - Playback
 
     func play(_ event: SoundEvent) {
+        lock.lock()
+        playLog.append(event)
+        lock.unlock()
+
         guard prefs.soundEnabled else { return }
         guard !QuietScenes.shared.isQuiet else { return }
         guard !isInQuietHours else { return }
@@ -155,6 +163,19 @@ final class SoundEngine {
         }
 
         playBuiltIn(named: assignment)
+    }
+
+    /// How many times `event` has been played since the last `resetPlayLog`.
+    func playCount(of event: SoundEvent) -> Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return playLog.filter { $0 == event }.count
+    }
+
+    func resetPlayLog() {
+        lock.lock()
+        playLog.removeAll()
+        lock.unlock()
     }
 
     /// Used by the Settings preview buttons, which should sound even when the event is muted.
