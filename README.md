@@ -83,6 +83,15 @@ in. Click a card and the exact terminal tab comes forward. No cloud. No account.
 
 > **Note:** Quiet Vibe Status is not code-signed with an Apple Developer ID. macOS Gatekeeper will warn on first launch. The steps below work around it automatically.
 
+### Homebrew (recommended)
+
+```bash
+brew tap quietapps/quietvibestatus
+brew install --cask quietvibestatus
+```
+
+The cask strips the macOS quarantine attribute on install so Gatekeeper does not block launch. The tap is at [quietapps/homebrew-quietvibestatus](https://github.com/quietapps/homebrew-quietvibestatus).
+
 ### Direct download
 
 1. Grab the latest `QuietVibeStatus-*.zip` from [Releases](https://github.com/quietapps/QuietVibeStatus/releases/latest)
@@ -119,6 +128,15 @@ xattr -cr "/Applications/Quiet Vibe Status.app"
 
 ## Updating
 
+### Homebrew
+
+```bash
+brew update
+brew upgrade --cask quietvibestatus
+```
+
+### Direct download
+
 Download the newer zip from [Releases](https://github.com/quietapps/QuietVibeStatus/releases), drag the new **Quiet Vibe Status.app** over the old one in `/Applications`, then run:
 
 ```bash
@@ -130,6 +148,18 @@ Your settings and installed hooks are unaffected by app updates.
 ## Uninstalling
 
 Use **Settings → Integrations → Uninstall** first — it removes every agent hook and the status line bridge before you delete the app.
+
+### Homebrew
+
+```bash
+# Remove the app and its preferences (via the cask's zap stanza)
+brew uninstall --cask --zap quietvibestatus
+
+# Drop the tap
+brew untap quietapps/quietvibestatus
+```
+
+### Direct download
 
 ```bash
 # Move the app to Trash

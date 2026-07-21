@@ -12,6 +12,11 @@ App icon redesign.
   instead of an activity equaliser. Reads as "your agents, and which one needs you" instead of a
   music visualizer
 
+### Added
+
+- **Homebrew tap** — `brew tap quietapps/quietvibestatus && brew install --cask quietvibestatus`, at
+  [quietapps/homebrew-quietvibestatus](https://github.com/quietapps/homebrew-quietvibestatus)
+
 ## 1.0.0 — 20 Jul 2026
 
 First release.
