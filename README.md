@@ -35,7 +35,7 @@ in. Click a card and the exact terminal tab comes forward. No cloud. No account.
 
 ## Features
 
-**Current release:** version **1.0.1**, build **2** — see [CHANGELOG](CHANGELOG.md) for per-build notes
+**Current release:** version **1.0.2**, build **3** — see [CHANGELOG](CHANGELOG.md) for per-build notes
 
 ### Monitor
 

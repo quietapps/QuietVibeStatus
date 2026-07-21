@@ -8,10 +8,11 @@ Colour deviates from the Quiet Apps blue on request, and is picked to stay clear
 Quiet Notch is mauve, Quiet Lens is indigo, Quiet Keys is graphite and amber. Deep teal is open,
 and it reads as "live" rather than as the brand accent.
 
-Mark: a display with the notch bitten out of its top edge, holding a small session grid on the left
-and a lit alert badge on the right — the two things the app actually shows you: your agents, and
-which one is waiting on you. The bite is a true cut-out — the body gradient shows through — because
-a tab drawn *on top of* a card reads as a clipboard clip instead of a notch.
+Mark: a terminal prompt — ">_" — cut straight into the icon body, with the notch bitten out of the
+top edge above it and a lit dot sitting in the notch. This is the app in one glyph: it watches your
+terminal (the prompt), it lives in the notch (the bite), and something there is waiting on you (the
+dot). Both the prompt and the notch are true cut-outs, not shapes painted on top, so the gradient
+shows through them the way the real hardware notch shows through a MacBook's lid.
 """
 
 import os
@@ -25,18 +26,13 @@ SS = 4  # supersample factor
 
 BODY_TOP = (20, 94, 83)      # #145E53 deep teal
 BODY_BOTTOM = (7, 40, 36)    # #072824 near-black teal
-SCREEN = (243, 247, 245)     # #F3F7F5 off-white display
-BAR = (23, 62, 56)           # #173E38 idle bars
-LIT = (46, 205, 148)         # #2ECD94 the working bar
+LIT = (46, 205, 148)         # #2ECD94 the "something needs you" dot
 
-# Geometry, as fractions of the icon body.
-SCREEN_RECT = (0.13, 0.23, 0.87, 0.77)
-SCREEN_RADIUS = 0.075
-NOTCH_WIDTH = 0.36   # of screen width
-NOTCH_HEIGHT = 0.17  # of screen height
+NOTCH_WIDTH = 0.30    # of body width
+NOTCH_HEIGHT = 0.11   # of body height
 
-GRID_COLS = 2
-GRID_ROWS = 2
+PROMPT_STROKE = 0.075   # chevron stroke width, of body height
+PROMPT_SIZE = 0.34      # chevron height, of body height
 
 
 def superellipse_mask(size, n=5.0):
@@ -59,88 +55,78 @@ def body(s):
     return Image.fromarray(grad, "RGBA")
 
 
-def screen_layer(s, rect):
-    """The display, with the notch punched out of its top edge as real transparency."""
-    layer = Image.new("RGBA", (s, s), (0, 0, 0, 0))
-    draw = ImageDraw.Draw(layer)
-    x0, y0, x1, y1 = rect
+def cut_notch(alpha, s):
+    """Bite the hardware-notch silhouette straight out of the body's alpha channel."""
+    mask = Image.fromarray(alpha, "L")
+    draw = ImageDraw.Draw(mask)
 
-    draw.rounded_rectangle([x0, y0, x1, y1], radius=int(s * SCREEN_RADIUS), fill=SCREEN + (255,))
+    notch_w = int(s * NOTCH_WIDTH)
+    notch_h = int(s * NOTCH_HEIGHT)
+    notch_x = (s - notch_w) // 2
+    radius = int(notch_h * 0.55)
 
-    notch_w = int((x1 - x0) * NOTCH_WIDTH)
-    notch_h = int((y1 - y0) * NOTCH_HEIGHT)
-    notch_x = (x0 + x1) // 2 - notch_w // 2
-    radius = int(notch_h * 0.5)
-
-    # Rounded along the bottom, flush across the top — the notch silhouette.
     draw.rounded_rectangle(
-        [notch_x, y0 - radius, notch_x + notch_w, y0 + notch_h],
+        [notch_x, -radius, notch_x + notch_w, notch_h],
         radius=radius,
-        fill=(0, 0, 0, 0),
+        fill=0,
     )
-    draw.rectangle([notch_x, y0 - radius, notch_x + notch_w, y0 + radius], fill=(0, 0, 0, 0))
-    return layer
+    draw.rectangle([notch_x, -radius, notch_x + notch_w, radius], fill=0)
+    return np.array(mask), (notch_x, notch_h, notch_x + notch_w)
 
 
-def draw_glyph(layer, rect):
-    """Your agents (the grid) and whichever one is waiting on you (the badge)."""
-    draw = ImageDraw.Draw(layer)
-    x0, y0, x1, y1 = rect
-    width, height = x1 - x0, y1 - y0
-    cy = (y0 + y1) // 2
+def cut_prompt(alpha, s):
+    """Cut the ">_" terminal prompt out of the body — the gradient shows through it."""
+    mask = Image.fromarray(alpha, "L")
+    draw = ImageDraw.Draw(mask)
 
-    # Session grid — a 2x2 block of cards, left of center.
-    cell = int(height * 0.22)
-    cell_gap = int(height * 0.09)
-    grid_span = GRID_COLS * cell + (GRID_COLS - 1) * cell_gap
-    grid_x0 = x0 + int(width * 0.16)
-    grid_y0 = cy - grid_span // 2
-    cell_radius = int(cell * 0.32)
+    glyph_h = s * PROMPT_SIZE
+    stroke = max(int(s * PROMPT_STROKE), 2)
+    cx, cy = s * 0.5, s * 0.58
 
-    for row in range(GRID_ROWS):
-        for col in range(GRID_COLS):
-            cx0 = grid_x0 + col * (cell + cell_gap)
-            cy0 = grid_y0 + row * (cell + cell_gap)
-            draw.rounded_rectangle(
-                [cx0, cy0, cx0 + cell, cy0 + cell],
-                radius=cell_radius,
-                fill=BAR + (255,),
-            )
+    chevron_w = glyph_h * 0.52
+    x0 = cx - glyph_h * 0.30
+    x1 = x0 + chevron_w
+    y0 = cy - glyph_h / 2
+    y1 = cy
+    y2 = cy + glyph_h / 2
 
-    # Alert badge — the lit circle with an exclamation mark, right of center.
-    badge_r = int(height * 0.26)
-    badge_cx = x1 - int(width * 0.24)
-    draw.ellipse(
-        [badge_cx - badge_r, cy - badge_r, badge_cx + badge_r, cy + badge_r],
-        fill=LIT + (255,),
-    )
+    draw.line([(x0, y0), (x1, y1), (x0, y2)], fill=0, width=stroke, joint="curve")
+    cap = stroke / 2
+    for px, py in ((x0, y0), (x1, y1), (x0, y2)):
+        draw.ellipse([px - cap, py - cap, px + cap, py + cap], fill=0)
 
-    stem_w = max(int(badge_r * 0.22), 1)
-    stem_h = int(badge_r * 0.72)
-    stem_top = cy - badge_r * 0.62
-    draw.rounded_rectangle(
-        [badge_cx - stem_w / 2, stem_top, badge_cx + stem_w / 2, stem_top + stem_h],
-        radius=stem_w / 2,
-        fill=SCREEN + (255,),
-    )
-    dot_r = stem_w * 0.62
-    dot_cy = cy + badge_r * 0.52
-    draw.ellipse(
-        [badge_cx - dot_r, dot_cy - dot_r, badge_cx + dot_r, dot_cy + dot_r],
-        fill=SCREEN + (255,),
-    )
+    bar_x0 = x1 + glyph_h * 0.16
+    bar_x1 = bar_x0 + glyph_h * 0.30
+    bar_y0 = cy - stroke * 0.5
+    bar_y1 = cy + stroke * 0.5
+    draw.rounded_rectangle([bar_x0, bar_y0, bar_x1, bar_y1], radius=stroke / 2, fill=0)
+
+    return np.array(mask)
+
+
+def draw_notch_dot(canvas, s, notch_span):
+    """The lit dot sitting inside the notch — something in there is waiting on you."""
+    draw = ImageDraw.Draw(canvas)
+    notch_x0, notch_h, notch_x1 = notch_span
+    r = notch_h * 0.30
+    cx = notch_x1 - notch_h * 0.85
+    cy = notch_h * 0.5
+    draw.ellipse([cx - r, cy - r, cx + r, cy + r], fill=LIT + (255,))
 
 
 def build():
     s = int(CANVAS * 0.82) * SS
     icon = body(s)
 
-    rect = tuple(int(s * f) for f in SCREEN_RECT)
-    layer = screen_layer(s, rect)
-    draw_glyph(layer, rect)
-    icon.alpha_composite(layer)
+    arr = np.array(icon)
+    alpha, notch_span = cut_notch(arr[..., 3], s)
+    alpha = cut_prompt(alpha, s)
+    arr[..., 3] = alpha
+    icon = Image.fromarray(arr, "RGBA")
 
-    # Re-apply the silhouette so nothing painted outside the body.
+    draw_notch_dot(icon, s, notch_span)
+
+    # Re-apply the outer silhouette so nothing painted outside the squircle body.
     arr = np.array(icon)
     arr[..., 3] = np.minimum(arr[..., 3], superellipse_mask(s))
     icon = Image.fromarray(arr, "RGBA")

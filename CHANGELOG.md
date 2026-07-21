@@ -2,15 +2,20 @@
 
 All notable changes to Quiet Vibe Status. Dates are the day the version was cut.
 
-## 1.0.1 — 21 Jul 2026
+## 1.0.2 — 21 Jul 2026
 
-App icon redesign.
+App icon redesign, take two.
 
 ### Changed
 
-- **App icon** — the notch-bitten display now holds a small 2×2 session grid and a lit alert badge
-  instead of an activity equaliser. Reads as "your agents, and which one needs you" instead of a
-  music visualizer
+- **App icon** — the session grid and alert badge didn't read as anything in particular at a
+  glance. Replaced with a `>_` terminal prompt cut straight into the icon body, the notch bitten out
+  above it, and a lit dot sitting in the notch like a camera housing. One glyph, three facts: it
+  watches your terminal, it lives in the notch, and something in there is waiting on you
+
+## 1.0.1 — 21 Jul 2026
+
+Homebrew tap.
 
 ### Added
 
