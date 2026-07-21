@@ -8,10 +8,11 @@ Colour deviates from the Quiet Apps blue on request, and is picked to stay clear
 Quiet Notch is mauve, Quiet Lens is indigo, Quiet Keys is graphite and amber. Deep teal is open,
 and it reads as "live" rather than as the brand accent.
 
-Mark: a card with the notch bitten out of its top edge — the bite is a true cut-out of the card
-layer only, so the gradient body shows through it, the same way the real hardware notch shows
-through a MacBook's lid. A lit dot sits in the notch like a camera housing. On the card, a bold
-`>_` terminal prompt is painted solid in the dark ink colour — not cut out — so it stays crisp and
+Mark: a terminal prompt — ">_" — painted straight onto the icon body, with the notch bitten out of
+the top edge above it and a lit dot sitting in the notch. This is the app in one glyph: it watches
+your terminal (the prompt), it lives in the notch (the bite), and something there is waiting on you
+(the dot). The notch is a true cut-out, so the gradient shows through it the way the real hardware
+notch shows through a MacBook's lid. The prompt is painted solid, not cut, so it stays crisp and
 high-contrast at every size instead of punching through to whatever is behind the icon.
 """
 
@@ -26,18 +27,14 @@ SS = 4  # supersample factor
 
 BODY_TOP = (20, 94, 83)      # #145E53 deep teal
 BODY_BOTTOM = (7, 40, 36)    # #072824 near-black teal
-CARD = (243, 247, 245)       # #F3F7F5 off-white card
-INK = (11, 43, 38)           # #0B2B26 the prompt glyph, dark against the card
-LIT = (46, 205, 148)         # #2ECD94 the notch dot — something needs you
+PROMPT = (243, 247, 245)     # #F3F7F5 off-white — the painted ">_", high-contrast on the gradient
+LIT = (46, 205, 148)         # #2ECD94 the "something needs you" dot
 
-CARD_RECT = (0.11, 0.20, 0.89, 0.80)
-CARD_RADIUS = 0.09
+NOTCH_WIDTH = 0.30    # of body width
+NOTCH_HEIGHT = 0.11   # of body height
 
-NOTCH_WIDTH = 0.34     # of card width
-NOTCH_HEIGHT = 0.15    # of card height
-
-PROMPT_STROKE = 0.11    # chevron stroke width, of card height
-PROMPT_SIZE = 0.46      # chevron height, of card height
+PROMPT_STROKE = 0.075   # chevron stroke width, of body height
+PROMPT_SIZE = 0.34      # chevron height, of body height
 
 
 def superellipse_mask(size, n=5.0):
@@ -60,77 +57,73 @@ def body(s):
     return Image.fromarray(grad, "RGBA")
 
 
-def card_layer(s, rect):
-    """The card, with the notch punched out of its top edge as real transparency —
-    the body gradient behind it shows through, the way a lid shows the hardware notch."""
-    layer = Image.new("RGBA", (s, s), (0, 0, 0, 0))
-    draw = ImageDraw.Draw(layer)
-    x0, y0, x1, y1 = rect
+def cut_notch(alpha, s):
+    """Bite the hardware-notch silhouette straight out of the body's alpha channel."""
+    mask = Image.fromarray(alpha, "L")
+    draw = ImageDraw.Draw(mask)
 
-    draw.rounded_rectangle([x0, y0, x1, y1], radius=int(s * CARD_RADIUS), fill=CARD + (255,))
-
-    notch_w = int((x1 - x0) * NOTCH_WIDTH)
-    notch_h = int((y1 - y0) * NOTCH_HEIGHT)
-    notch_x = (x0 + x1) // 2 - notch_w // 2
+    notch_w = int(s * NOTCH_WIDTH)
+    notch_h = int(s * NOTCH_HEIGHT)
+    notch_x = (s - notch_w) // 2
     radius = int(notch_h * 0.55)
 
     draw.rounded_rectangle(
-        [notch_x, y0 - radius, notch_x + notch_w, y0 + notch_h],
+        [notch_x, -radius, notch_x + notch_w, notch_h],
         radius=radius,
-        fill=(0, 0, 0, 0),
+        fill=0,
     )
-    draw.rectangle([notch_x, y0 - radius, notch_x + notch_w, y0 + radius], fill=(0, 0, 0, 0))
-    return layer, (notch_x, y0, notch_x + notch_w, y0 + notch_h)
+    draw.rectangle([notch_x, -radius, notch_x + notch_w, radius], fill=0)
+    return np.array(mask), (notch_x, notch_h, notch_x + notch_w)
 
 
-def draw_notch_dot(layer, notch_rect):
-    """The lit dot sitting in the notch, like a camera housing — something needs you."""
-    draw = ImageDraw.Draw(layer)
-    nx0, ny0, nx1, ny1 = notch_rect
-    r = (ny1 - ny0) * 0.26
-    cx = nx1 - (ny1 - ny0) * 0.9
-    cy = (ny0 + ny1) / 2
-    draw.ellipse([cx - r, cy - r, cx + r, cy + r], fill=LIT + (255,))
+def draw_prompt(canvas, s):
+    """Paint the ">_" terminal prompt solid on top of the body — never a see-through hole."""
+    draw = ImageDraw.Draw(canvas)
 
-
-def draw_prompt(layer, rect):
-    """A bold, solid `>_` painted on the card — always crisp, never a see-through hole."""
-    draw = ImageDraw.Draw(layer)
-    x0, y0, x1, y1 = rect
-    width, height = x1 - x0, y1 - y0
-    cx, cy = x0 + width * 0.5, y0 + height * 0.58
-
-    glyph_h = height * PROMPT_SIZE
-    stroke = max(int(height * PROMPT_STROKE), 2)
+    glyph_h = s * PROMPT_SIZE
+    stroke = max(int(s * PROMPT_STROKE), 2)
+    cx, cy = s * 0.5, s * 0.58
 
     chevron_w = glyph_h * 0.52
-    cx0 = cx - glyph_h * 0.34
-    cx1 = cx0 + chevron_w
-    cy0 = cy - glyph_h / 2
-    cy1 = cy
-    cy2 = cy + glyph_h / 2
+    x0 = cx - glyph_h * 0.30
+    x1 = x0 + chevron_w
+    y0 = cy - glyph_h / 2
+    y1 = cy
+    y2 = cy + glyph_h / 2
 
-    draw.line([(cx0, cy0), (cx1, cy1), (cx0, cy2)], fill=INK + (255,), width=stroke, joint="curve")
+    draw.line([(x0, y0), (x1, y1), (x0, y2)], fill=PROMPT + (255,), width=stroke, joint="curve")
     cap = stroke / 2
-    for px, py in ((cx0, cy0), (cx1, cy1), (cx0, cy2)):
-        draw.ellipse([px - cap, py - cap, px + cap, py + cap], fill=INK + (255,))
+    for px, py in ((x0, y0), (x1, y1), (x0, y2)):
+        draw.ellipse([px - cap, py - cap, px + cap, py + cap], fill=PROMPT + (255,))
 
-    bar_x0 = cx1 + glyph_h * 0.18
-    bar_x1 = bar_x0 + glyph_h * 0.32
+    bar_x0 = x1 + glyph_h * 0.16
+    bar_x1 = bar_x0 + glyph_h * 0.30
     bar_y0 = cy - stroke * 0.5
     bar_y1 = cy + stroke * 0.5
-    draw.rounded_rectangle([bar_x0, bar_y0, bar_x1, bar_y1], radius=stroke / 2, fill=INK + (255,))
+    draw.rounded_rectangle([bar_x0, bar_y0, bar_x1, bar_y1], radius=stroke / 2, fill=PROMPT + (255,))
+
+
+def draw_notch_dot(canvas, s, notch_span):
+    """The lit dot sitting inside the notch — something in there is waiting on you."""
+    draw = ImageDraw.Draw(canvas)
+    notch_x0, notch_h, notch_x1 = notch_span
+    r = notch_h * 0.30
+    cx = notch_x1 - notch_h * 0.85
+    cy = notch_h * 0.5
+    draw.ellipse([cx - r, cy - r, cx + r, cy + r], fill=LIT + (255,))
 
 
 def build():
     s = int(CANVAS * 0.82) * SS
     icon = body(s)
 
-    rect = tuple(int(s * f) for f in CARD_RECT)
-    layer, notch_rect = card_layer(s, rect)
-    draw_prompt(layer, rect)
-    icon.alpha_composite(layer)
-    draw_notch_dot(icon, notch_rect)
+    arr = np.array(icon)
+    alpha, notch_span = cut_notch(arr[..., 3], s)
+    arr[..., 3] = alpha
+    icon = Image.fromarray(arr, "RGBA")
+
+    draw_prompt(icon, s)
+    draw_notch_dot(icon, s, notch_span)
 
     # Re-apply the outer silhouette so nothing painted outside the squircle body.
     arr = np.array(icon)

@@ -9,10 +9,10 @@ App icon redesign, take two.
 ### Changed
 
 - **App icon** — the session grid and alert badge didn't read as anything in particular at a
-  glance. Replaced with a card holding a bold, solid `>_` terminal prompt, the notch bitten out of
-  its top edge, and a lit dot sitting in the notch like a camera housing. The prompt is painted
-  solid rather than cut through, so it stays high-contrast at every size instead of fading into
-  whatever is behind the icon
+  glance. Replaced with a `>_` terminal prompt sitting directly on the gradient body, the notch
+  bitten out of the top edge above it, and a lit dot in the notch like a camera housing. The prompt
+  is painted solid rather than cut through, so it stays high-contrast at every size instead of
+  fading into whatever is behind the icon
 
 ## 1.0.1 — 21 Jul 2026
 
