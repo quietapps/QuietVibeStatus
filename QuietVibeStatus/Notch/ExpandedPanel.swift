@@ -49,6 +49,19 @@ struct ExpandedPanel: View {
             : prefs.maxPanelHeight
     }
 
+    /// Panel height, rounded up so the frame is never a fraction shorter than the content it
+    /// measured. A frame of 247.0 around 247.33 of content reads as overflow to the scroll view and
+    /// flashes the indicator even when nothing needs scrolling.
+    private var panelHeight: CGFloat {
+        min(listHeight.rounded(.up), heightAllowance)
+    }
+
+    /// The content genuinely doesn't fit. The one-point slack absorbs sub-pixel measurement jitter
+    /// so the elapsed-time tick can't toggle the indicator on and off between hovers.
+    private var isScrollable: Bool {
+        listHeight > heightAllowance + 1
+    }
+
     private var sessionList: some View {
         ScrollViewReader { proxy in
             ScrollView(.vertical) {
@@ -83,9 +96,10 @@ struct ExpandedPanel: View {
             }
             // Hug the content instead of always claiming the full allowance, so two short cards
             // don't leave a tall empty void hanging off the notch.
-            .frame(height: min(listHeight, heightAllowance))
+            .frame(height: panelHeight)
             .onPreferenceChange(ListHeightKey.self) { listHeight = $0 }
-            .scrollIndicators(.automatic)
+            .scrollIndicators(isScrollable ? .automatic : .never)
+            .scrollDisabled(!isScrollable)
             .onChange(of: store.highlightedID) { _, id in
                 guard let id else { return }
                 withAnimation(Theme.ease) { proxy.scrollTo(id, anchor: .top) }

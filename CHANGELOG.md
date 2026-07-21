@@ -2,6 +2,17 @@
 
 All notable changes to Quiet Vibe Status. Dates are the day the version was cut.
 
+## 1.0.4 — 21 Jul 2026
+
+### Fixed
+
+- **Panel scrollbar flickering** — the panel sizes itself to its content, and a fractional content
+  height against an integer-rounded frame read as a one-pixel overflow, so the scroll indicator
+  appeared even when the list was nowhere near the maximum height. Because the elapsed-time and
+  activity text re-measure the panel every second, the phantom overflow came and went between
+  hovers. The frame is now rounded up so it is never shorter than its content, and the indicator is
+  shown only when the list genuinely exceeds the panel's maximum height
+
 ## 1.0.3 — 21 Jul 2026
 
 Duplicate cards, stuck cards, session history and cost, and the first tests.
