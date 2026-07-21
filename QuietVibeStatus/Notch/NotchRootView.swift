@@ -54,7 +54,12 @@ struct NotchRootView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .onPreferenceChange(PanelHeightKey.self) { panelHeight = $0 }
-        .onPreferenceChange(PillSizeKey.self) { pillSize = $0 }
+        .onPreferenceChange(PillSizeKey.self) {
+            pillSize = $0
+            // The controller needs the pill footprint to decide whether the pointer is really over
+            // the notch, separately from the morphing content size.
+            interaction.report(pillSize: $0)
+        }
     }
 
     private var morphingContent: some View {

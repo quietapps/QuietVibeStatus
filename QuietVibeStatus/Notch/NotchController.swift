@@ -304,7 +304,11 @@ final class NotchController: ObservableObject {
         Task { [weak self] in
             try? await Task.sleep(nanoseconds: 120_000_000)
             guard let self, self.presentation == .collapsed else { return }
-            guard self.pointerIsOverContent else { return }
+            // Check the pill footprint, not the content size. The collapse animation runs ~0.35s
+            // but this fires after 120ms, so `contentSize` is still mid-shrink and panel-sized —
+            // testing against it re-opened the notch whenever the pointer sat anywhere in the
+            // former panel's area, well away from the pill itself.
+            guard self.pointerIsOverPill else { return }
             self.hoverBegan()
         }
     }
@@ -314,12 +318,22 @@ final class NotchController: ObservableObject {
 
     /// Whether the pointer is inside the region SwiftUI actually painted, on *any* panel.
     private var pointerIsOverContent: Bool {
+        pointerIsOver { interactions[$0]?.contentSize }
+    }
+
+    /// Whether the pointer is over the collapsed pill, on *any* panel.
+    ///
+    /// Uses the stable pill footprint rather than the morphing content size, so it stays honest
+    /// while the panel is animating open or shut.
+    private var pointerIsOverPill: Bool {
+        pointerIsOver { interactions[$0]?.pillSize }
+    }
+
+    private func pointerIsOver(_ size: (CGDirectDisplayID) -> CGSize?) -> Bool {
         let location = NSEvent.mouseLocation
 
         return panels.contains { id, panel in
-            guard let size = interactions[id]?.contentSize,
-                  size.width > 1, size.height > 1
-            else { return false }
+            guard let size = size(id), size.width > 1, size.height > 1 else { return false }
 
             // Content is anchored to the top-center of the panel; AppKit's origin is bottom-left.
             let rect = CGRect(

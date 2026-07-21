@@ -2,6 +2,16 @@
 
 All notable changes to Quiet Vibe Status. Dates are the day the version was cut.
 
+## 1.0.5 — 21 Jul 2026
+
+### Fixed
+
+- **Panel re-opening when the pointer was near, not on, the notch** — after the panel collapsed, it
+  re-checked whether the pointer was still over the pill so it could re-open if you hadn't really
+  left. That check used the panel's live size, which is still mid-shrink 120ms later, so the hit
+  area was panel-sized: sitting anywhere in the space the panel had just vacated sprang it back
+  open. The re-open now tests the pill's own footprint, which stays honest while the panel animates
+
 ## 1.0.4 — 21 Jul 2026
 
 ### Fixed

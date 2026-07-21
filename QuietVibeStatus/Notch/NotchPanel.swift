@@ -89,6 +89,12 @@ final class FirstMouseHostingView<Content: View>: NSHostingView<Content> {
 /// A subject the AppKit layer subscribes to keeps the data flowing one way.
 final class NotchInteractionModel {
     private(set) var contentSize: CGSize = .zero
+    /// Size of the collapsed pill, independent of the expand animation.
+    ///
+    /// `contentSize` morphs continuously as the panel grows and shrinks, so it can't be trusted to
+    /// describe the pill's footprint mid-animation. The pill view is always laid out, so this stays
+    /// the pill's real size in every state — the honest target for "is the pointer over the notch".
+    private(set) var pillSize: CGSize = .zero
 
     let contentSizeChanged = PassthroughSubject<CGSize, Never>()
 
@@ -96,5 +102,9 @@ final class NotchInteractionModel {
         guard size != contentSize else { return }
         contentSize = size
         contentSizeChanged.send(size)
+    }
+
+    func report(pillSize size: CGSize) {
+        pillSize = size
     }
 }
