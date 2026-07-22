@@ -35,7 +35,7 @@ in. Click a card and the exact terminal tab comes forward. No cloud. No account.
 
 ## Features
 
-**Current release:** version **1.0.6**, build **7** — see [CHANGELOG](CHANGELOG.md) for per-build notes
+**Current release:** version **1.0.7**, build **1** — see [CHANGELOG](CHANGELOG.md) for per-build notes
 
 ### Monitor
 
@@ -191,7 +191,7 @@ rm -rf ~/Library/Preferences/app.quiet.QuietVibeStatus.plist \
 | Connect an agent | Settings → **Integrations** → toggle the agent on |
 | Set quiet hours / scenes | Settings → **Sound** |
 | Check quota | Settings → **Usage** |
-| Quit | Menu bar → **Quit Quiet Vibe Status** |
+| Quit | Menu bar → **Quit Quiet Vibe Status**, or Settings → **General** → **Quit** |
 
 ## How it connects to agents
 
@@ -313,8 +313,9 @@ No external dependencies — Apple frameworks only (SwiftUI, AppKit, AppleScript
 All settings are in **Settings** (menu bar icon → **Settings…**), across ten panes: **General**
 (hover, dwell, auto-hide, cleanup, session restore, approval timeout), **Integrations** (per-agent
 hook toggles, competing-monitor cleanup, repair, uninstall), **Notifications** (completion behavior,
-quiet scenes, directory and prompt filters), **Display** (clean or detailed pill, panel size, card
-fields, project grouping, token cost, notch alignment), **Sound**, **Usage**, **History** (finished
+quiet scenes, directory and prompt filters), **Display** (clean or detailed pill, which displays
+carry the pill, panel size, reveal height, card fields, project grouping, token cost, notch
+alignment), **Sound**, **Usage**, **History** (finished
 sessions and cost summary), **Shortcuts**, **Labs**, **About**.
 
 Reset to defaults:
@@ -367,7 +368,7 @@ It would take those keys from every other app while a request is pending, and a 
 approve something you never read. Turn it on in Shortcuts if you want it anyway.
 
 **How do I quit?**
-Click the menu bar icon → **Quit Quiet Vibe Status**.
+Click the menu bar icon → **Quit Quiet Vibe Status**, or open Settings → **General** → **Quit**.
 
 ## Status
 

@@ -247,6 +247,11 @@ final class NotchController: ObservableObject {
 
         guard prefs.expandOnHover, !presentation.isSticky else { return }
         guard presentation != .hovered else { return }
+        // Only what is actually painted may open the notch. SwiftUI reports hover against the
+        // container's animated frame, so while the panel shrinks it sweeps past a stationary
+        // pointer and fires an enter event — which re-opened the notch over empty screen well
+        // below the pill, and then swallowed clicks meant for the app underneath.
+        guard pointerIsOverTrigger else { return }
 
         hoverTask?.cancel()
         hoverTask = Task { [weak self] in
@@ -254,6 +259,9 @@ final class NotchController: ObservableObject {
             let delay = self.prefs.hoverDuration
             try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
             guard !Task.isCancelled else { return }
+            // The pointer can leave during the delay without SwiftUI sending an exit event —
+            // the pill it entered may have shrunk or moved out from under it.
+            guard self.pointerIsOverTrigger else { return }
             // No suppression check here on purpose: hovering the notch is a deliberate request to
             // see the panel. Smart suppression exists to stop the panel *auto*-expanding over the
             // window you're working in — applying it to hover meant the notch simply refused to
@@ -315,6 +323,15 @@ final class NotchController: ObservableObject {
 
     /// How long to wait before believing the pointer really left.
     private static let hoverGracePeriod: Double = 0.25
+
+    /// The region that may open the notch, or hold it open, right now.
+    ///
+    /// Collapsed, that is the pill and nothing else: the panel's footprint is stale in that state
+    /// and treating it as live made the empty screen under the notch behave like a trigger.
+    /// Expanded, the whole painted panel counts, so moving across the cards keeps it up.
+    private var pointerIsOverTrigger: Bool {
+        presentation == .collapsed ? pointerIsOverPill : pointerIsOverContent
+    }
 
     /// Whether the pointer is inside the region SwiftUI actually painted, on *any* panel.
     private var pointerIsOverContent: Bool {
@@ -394,6 +411,9 @@ final class NotchController: ObservableObject {
     private func scheduleDwellCollapse() {
         dwellTask?.cancel()
         let dwell = prefs.autoRevealDwell
+        // "Until dismissed": leave it up. Hover-collapse, a click elsewhere, and the collapse
+        // shortcut all still close it, so this can't strand the panel open.
+        guard dwell > 0 else { return }
         dwellTask = Task { [weak self] in
             try? await Task.sleep(nanoseconds: UInt64(dwell * 1_000_000_000))
             guard !Task.isCancelled, let self else { return }

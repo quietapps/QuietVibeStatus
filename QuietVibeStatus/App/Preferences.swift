@@ -34,8 +34,12 @@ final class Preferences: ObservableObject {
     // MARK: General — dismissal
 
     @Stored("autoCollapseOnMouseLeave", default: true) var autoCollapseOnMouseLeave: Bool
-    /// How long a completion/warning reveal stays open, in seconds.
-    @Stored("autoRevealDwell", default: 5.0) var autoRevealDwell: Double
+    /// How long a completion/warning reveal stays open, in seconds. `0` keeps it open until it is
+    /// dismissed.
+    ///
+    /// Five seconds was too short to read what a finished agent had actually done — the panel was
+    /// gone before you had looked away from your editor.
+    @Stored("autoRevealDwell", default: 12.0) var autoRevealDwell: Double
     @Stored("dismissRevealOnOutsideClick", default: false) var dismissRevealOnOutsideClick: Bool
     /// Seconds before a session with no clear close signal is cleaned up.
     @Stored("idleCleanupSeconds", default: 7200.0) var idleCleanupSeconds: Double
@@ -89,17 +93,22 @@ final class Preferences: ObservableObject {
         set { notchStyleRaw = newValue.rawValue }
     }
 
-    /// Defaults to the built-in display: on a Mac that has a notch, that is where the pill belongs,
-    /// and following focus onto an external monitor on first launch just hides the app from you.
-    @Stored("displayTarget", default: DisplayTarget.builtIn.rawValue) var displayTargetRaw: String
+    /// Defaults to every display: on a multi-monitor desk the pill is visible wherever you happen
+    /// to be looking, so a fresh install is never invisible because the app picked the other screen.
+    @Stored("displayTarget", default: DisplayTarget.allDisplays.rawValue) var displayTargetRaw: String
 
     var displayTarget: DisplayTarget {
-        get { DisplayTarget(rawValue: displayTargetRaw) ?? .followFocus }
+        get { DisplayTarget(rawValue: displayTargetRaw) ?? .allDisplays }
         set { displayTargetRaw = newValue.rawValue }
     }
 
     @Stored("contentFontSize", default: 11.0) var contentFontSize: Double
-    @Stored("completionCardHeight", default: 90.0) var completionCardHeight: Double
+    /// Ceiling for a completion/warning reveal, in points.
+    ///
+    /// Reveals get their own ceiling so a finished task doesn't drop a full-height panel over your
+    /// work. The old one was derived from a single card's height and cut most reveals off after two
+    /// rows — generous enough to read, still short of the full panel, is the useful middle.
+    @Stored("revealMaxHeight", default: 400.0) var revealMaxHeight: Double
     @Stored("maxPanelHeight", default: 560.0) var maxPanelHeight: Double
     @Stored("maxPanelWidth", default: 640.0) var maxPanelWidth: Double
 

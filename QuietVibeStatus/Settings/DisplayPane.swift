@@ -41,10 +41,10 @@ struct DisplayPane: View {
                     .frame(width: 160)
                 }
                 SettingsSliderRow(
-                    title: "Completion card height",
-                    value: $prefs.completionCardHeight,
-                    range: 60 ... 200,
-                    step: 5
+                    title: "Reveal max height",
+                    value: $prefs.revealMaxHeight,
+                    range: 160 ... 900,
+                    step: 20
                 ) { "\(Int($0))pt" }
                 SettingsSliderRow(
                     title: "Max panel height",

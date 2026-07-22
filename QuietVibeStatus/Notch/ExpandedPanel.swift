@@ -42,10 +42,12 @@ struct ExpandedPanel: View {
     }
 
     /// A completion reveal is a glance, not a browse: it gets its own smaller allowance so a
-    /// finished task doesn't drop the full-height panel over your work.
+    /// finished task doesn't drop the full-height panel over your work. It still has to be tall
+    /// enough to read — the previous two-cards-worth ceiling truncated the very update the reveal
+    /// had opened to show.
     private var heightAllowance: CGFloat {
         controller.presentation == .revealed
-            ? min(prefs.completionCardHeight * 2, prefs.maxPanelHeight)
+            ? min(prefs.revealMaxHeight, prefs.maxPanelHeight)
             : prefs.maxPanelHeight
     }
 
@@ -74,11 +76,7 @@ struct ExpandedPanel: View {
 
                     if prefs.groupByProject {
                         ForEach(store.groupedSessions) { group in
-                            ProjectGroupHeader(group: group)
-                            ForEach(group.sessions) { session in
-                                SessionCard(session: session)
-                                    .id(session.id)
-                            }
+                            ProjectGroupSection(group: group)
                         }
                     } else {
                         ForEach(store.visibleSessions) { session in
@@ -108,33 +106,67 @@ struct ExpandedPanel: View {
     }
 }
 
-/// A small heading above the cards of one project.
+/// One project's block in the list.
 ///
-/// Suppressed for single-session projects: a heading over one card is noise, and the card already
-/// names its own project. It earns its place only when it's collecting several cards together.
-private struct ProjectGroupHeader: View {
+/// A project with several sessions gets a heading and its cards are indented behind a rail, so the
+/// group has a visible end. Without it the next project's single card sat flush under the last
+/// grouped card and read as another member of the group above.
+///
+/// A project with one session gets neither: a heading over a lone card is noise, the card already
+/// names its own project, and with no rail beside it there is nothing to mistake it for.
+private struct ProjectGroupSection: View {
     let group: SessionStore.ProjectGroup
 
     var body: some View {
         if group.sessions.count > 1 {
-            HStack(spacing: Theme.s1) {
-                Image(systemName: "folder")
-                    .font(.system(size: 9))
-                Text(group.name)
-                    .font(Theme.ui(10, weight: .semibold))
-                Text("\(group.sessions.count)")
-                    .font(Theme.mono(9, weight: .medium))
-                    .foregroundStyle(Theme.onDark3)
-                    .padding(.horizontal, 4)
-                    .padding(.vertical, 1)
-                    .background(
-                        Capsule().fill(Theme.onDark3.opacity(0.15))
-                    )
-                Spacer()
+            VStack(alignment: .leading, spacing: Theme.s2) {
+                ProjectGroupHeader(group: group)
+
+                VStack(spacing: Theme.s2) {
+                    ForEach(group.sessions) { session in
+                        SessionCard(session: session)
+                            .id(session.id)
+                    }
+                }
+                .padding(.leading, 10)
+                .overlay(alignment: .leading) {
+                    Capsule()
+                        .fill(Theme.onDark3.opacity(0.25))
+                        .frame(width: 2)
+                        .padding(.vertical, 2)
+                }
             }
-            .foregroundStyle(Theme.onDark2)
-            .padding(.top, Theme.s1)
+        } else {
+            ForEach(group.sessions) { session in
+                SessionCard(session: session)
+                    .id(session.id)
+            }
         }
+    }
+}
+
+/// The heading above a multi-session project.
+private struct ProjectGroupHeader: View {
+    let group: SessionStore.ProjectGroup
+
+    var body: some View {
+        HStack(spacing: Theme.s1) {
+            Image(systemName: "folder")
+                .font(.system(size: 9))
+            Text(group.name)
+                .font(Theme.ui(10, weight: .semibold))
+            Text("\(group.sessions.count)")
+                .font(Theme.mono(9, weight: .medium))
+                .foregroundStyle(Theme.onDark3)
+                .padding(.horizontal, 4)
+                .padding(.vertical, 1)
+                .background(
+                    Capsule().fill(Theme.onDark3.opacity(0.15))
+                )
+            Spacer()
+        }
+        .foregroundStyle(Theme.onDark2)
+        .padding(.top, Theme.s1)
     }
 }
 

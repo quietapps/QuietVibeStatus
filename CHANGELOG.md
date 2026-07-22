@@ -2,6 +2,36 @@
 
 All notable changes to Quiet Vibe Status. Dates are the day the version was cut.
 
+## 1.0.7 — 22 Jul 2026
+
+### Fixed
+
+- **The panel still opening from the empty space below the pill** — 1.0.5 fixed the re-open that
+  happened right after a collapse, but not the open itself. The hover handler trusted whatever
+  SwiftUI reported, and SwiftUI reports hover against the container's animated frame: while the
+  panel shrinks, that frame sweeps across a stationary pointer and fires an enter event. The notch
+  then opened over empty screen and swallowed clicks meant for the window underneath. Opening now
+  checks the pointer against the pill's real footprint, both before the hover delay and after it,
+  so an event from the outgoing panel can't open anything
+- **A single-session project reading as part of the group above it** — with **Group cards by
+  project** on, a project with one session correctly gets no heading, but it also sat flush under
+  the previous project's last card with nothing to separate them. Multi-session groups now indent
+  their cards behind a rail, which gives the group a visible end; lone cards stay full width
+
+### Changed
+
+- **Reveals stay up long enough to read** — a completion or warning reveal dwelled for 5 seconds and
+  was capped at roughly two cards tall, so the update it had opened to show was often gone, or cut
+  off, before you looked over. Dwell now defaults to 12 seconds and offers up to 60, plus **Until
+  dismissed**; the reveal's height ceiling moves from 180pt to 400pt and is adjustable in
+  **Display** → **Reveal max height**. Reveals are still capped below a full panel on purpose — a
+  finished task should not blanket the window you are working in
+- **New installs show the pill on every display** — the default was the built-in display, which on a
+  desk with external monitors put the app on a screen you may not be looking at, with nothing on the
+  one you are. It now defaults to **All Displays**. Existing preferences are untouched
+- **Quit is in Settings** — Settings → **General** → **Quit**, next to the menu bar item, for when
+  the menu bar is crowded
+
 ## 1.0.6 — 21 Jul 2026
 
 ### Fixed

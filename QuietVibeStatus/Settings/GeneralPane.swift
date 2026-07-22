@@ -40,15 +40,17 @@ struct GeneralPane: View {
                 )
                 SettingsRow(
                     title: "Auto reveal dwell",
-                    subtitle: "How long the panel stays open for completion and warning reveals. Press ESC to close sooner."
+                    subtitle: "How long the panel stays open for completion and warning reveals. Move the pointer onto it and away again to close it sooner."
                 ) {
                     Picker("", selection: $prefs.autoRevealDwell) {
-                        ForEach([2.0, 3.0, 5.0, 8.0, 12.0, 20.0], id: \.self) { value in
+                        ForEach([3.0, 5.0, 8.0, 12.0, 20.0, 30.0, 60.0], id: \.self) { value in
                             Text("\(Int(value))s").tag(value)
                         }
+                        Divider()
+                        Text("Until dismissed").tag(0.0)
                     }
                     .labelsHidden()
-                    .frame(width: 90)
+                    .frame(width: 140)
                 }
                 SettingsToggleRow(
                     title: "Dismiss auto reveal on outside click",
@@ -95,6 +97,15 @@ struct GeneralPane: View {
                     subtitle: "When enabled, clicking a session won't switch to its terminal or IDE.",
                     isOn: $prefs.disableClickToJump
                 )
+            }
+
+            SettingsGroup(title: "Quit") {
+                SettingsRow(
+                    title: "Quit Quiet Vibe Status",
+                    subtitle: "Your agents keep running. Restart the app from Applications or Spotlight."
+                ) {
+                    Button("Quit") { NSApp.terminate(nil) }
+                }
             }
         }
     }
