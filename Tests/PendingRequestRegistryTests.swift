@@ -27,6 +27,60 @@ final class PendingRequestRegistryTests: XCTestCase {
         )
     }
 
+    private func question(id: String, session: String = "s-1") -> ApprovalRequest {
+        ApprovalRequest(
+            id: id,
+            sessionID: session,
+            agent: .claude,
+            kind: .question(QuestionSet(items: [], rawInput: HookFixtures.json([:])))
+        )
+    }
+
+    // MARK: - Batch
+
+    func testAllowAllResolvesEveryPermissionInTheSession() async {
+        let first = Task { await registry.park(request(id: "req-1")) }
+        let second = Task { await registry.park(request(id: "req-2")) }
+        await waitForPending(count: 2)
+
+        registry.resolveAll(sessionID: "s-1", with: .allow)
+
+        for outcome in await [first.value, second.value] {
+            if case .allow = outcome {} else { XCTFail("expected .allow, got \(outcome)") }
+        }
+        XCTAssertTrue(registry.requests.isEmpty)
+    }
+
+    /// A batch must not reach into another agent's queue.
+    func testBatchIsScopedToOneSession() async {
+        let mine = Task { await registry.park(request(id: "req-1", session: "s-1")) }
+        let other = Task { await registry.park(request(id: "req-2", session: "s-2")) }
+        await waitForPending(count: 2)
+
+        registry.resolveAll(sessionID: "s-1", with: .allow)
+        _ = await mine.value
+
+        XCTAssertEqual(registry.requests.map(\.id), ["req-2"])
+        registry.resolve("req-2", with: .allow)
+        _ = await other.value
+    }
+
+    /// Questions and plans each need their own answer, so a batch leaves them alone.
+    func testBatchSkipsQuestions() async {
+        let permission = Task { await registry.park(request(id: "req-1")) }
+        let asked = Task { await registry.park(question(id: "req-2")) }
+        await waitForPending(count: 2)
+
+        XCTAssertEqual(registry.batchablePermissions(for: "s-1").map(\.id), ["req-1"])
+
+        registry.resolveAll(sessionID: "s-1", with: .allow)
+        _ = await permission.value
+
+        XCTAssertEqual(registry.requests.map(\.id), ["req-2"])
+        registry.resolve("req-2", with: .defer_)
+        _ = await asked.value
+    }
+
     func testParkedRequestResumesWithTheUsersOutcome() async {
         let parked = Task { await registry.park(request()) }
         await waitForPending(count: 1)
@@ -82,6 +136,36 @@ final class PendingRequestRegistryTests: XCTestCase {
 
         registry.resolve("req-2", with: .allow)
         _ = await second.value
+    }
+
+    /// The hook hanging up — you answered in the agent's own terminal, or the CLI exited — cancels
+    /// the task awaiting the card. The card must go with it instead of offering buttons for a
+    /// question that is already settled.
+    func testAgentHangingUpClearsTheCard() async {
+        prefs.approvalTimeoutMinutes = 0
+
+        let parked = Task { await registry.park(request()) }
+        await waitForPending(count: 1)
+
+        parked.cancel()
+        let outcome = await parked.value
+
+        if case .defer_ = outcome {} else { XCTFail("expected .defer_, got \(outcome)") }
+        await waitForPending(count: 0)
+    }
+
+    /// Abandoning a request that was already answered must not resume its continuation twice.
+    func testAbandonAfterResolveIsIgnored() async {
+        prefs.approvalTimeoutMinutes = 0
+
+        let parked = Task { await registry.park(request()) }
+        await waitForPending(count: 1)
+
+        registry.resolve("req-1", with: .allow)
+        registry.abandon("req-1")
+
+        let outcome = await parked.value
+        if case .allow = outcome {} else { XCTFail("expected .allow, got \(outcome)") }
     }
 
     func testTimeoutOfZeroWaitsIndefinitely() async {

@@ -75,11 +75,21 @@ struct PermissionBody: View {
     let input: JSONValue
     let request: ApprovalRequest
 
+    @EnvironmentObject private var store: SessionStore
     @EnvironmentObject private var prefs: Preferences
+
+    private var cwd: String? { store.session(id: request.sessionID)?.cwd }
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.s2) {
-            if let detail {
+            if prefs.showRiskWarnings,
+               let risk = CommandRisk.headline(tool: tool, input: input, cwd: cwd) {
+                RiskStrip(finding: risk)
+            }
+
+            if let edit = EditPreview(tool: tool, input: input) {
+                DiffPreview(preview: edit)
+            } else if let detail {
                 ScrollView(.vertical) {
                     Text(detail)
                         .font(Theme.mono(prefs.contentFontSize - 1))

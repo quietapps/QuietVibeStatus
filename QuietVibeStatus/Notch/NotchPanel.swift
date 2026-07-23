@@ -1,5 +1,4 @@
 import AppKit
-import Combine
 import SwiftUI
 
 /// A borderless always-on-top panel pinned under the notch.
@@ -50,11 +49,18 @@ final class NotchPanel: NSPanel {
 /// transparent, and without this hit-test override those transparent pixels would swallow clicks
 /// meant for the window underneath.
 final class PassthroughContainerView: NSView {
-    /// Region, in this view's coordinates, that should receive mouse events.
-    var activeRect: CGRect = .zero
+    /// The region, in this view's coordinates, that should receive mouse events — asked for at
+    /// hit-test time rather than pushed in.
+    ///
+    /// This used to be a stored rect fed by a Combine subject. The subject published only on
+    /// change, and the first size arrived while the hosting view was being installed — before the
+    /// subscription existed — so on any panel that reported early the rect stayed `.zero` and every
+    /// click fell straight through. That panel then looked dead until something resized its content
+    /// and finally published a rect. Pulling the value can't miss an event it wasn't listening for.
+    var activeRegion: () -> CGRect = { .zero }
 
     override func hitTest(_ point: NSPoint) -> NSView? {
-        guard activeRect.contains(convert(point, from: superview)) else { return nil }
+        guard activeRegion().contains(convert(point, from: superview)) else { return nil }
         return super.hitTest(point)
     }
 
@@ -80,13 +86,13 @@ final class FirstMouseHostingView<Content: View>: NSHostingView<Content> {
     }
 }
 
-/// Publishes the currently interactive region so `PassthroughContainerView` can hit-test it.
+/// Holds the currently interactive region so `PassthroughContainerView` can hit-test it.
 ///
 /// Deliberately *not* an `ObservableObject`. The SwiftUI view that measures the content is the same
 /// one that reports it here, and the measured size changes on every frame of the expand animation.
 /// If reporting a size invalidated that view, each frame would restart the transition and it would
 /// never settle — which showed up as the pill and the panel both stuck on screen at half opacity.
-/// A subject the AppKit layer subscribes to keeps the data flowing one way.
+/// Plain storage that the AppKit layer reads on demand keeps the data flowing one way.
 final class NotchInteractionModel {
     private(set) var contentSize: CGSize = .zero
     /// Size of the collapsed pill, independent of the expand animation.
@@ -96,12 +102,8 @@ final class NotchInteractionModel {
     /// the pill's real size in every state — the honest target for "is the pointer over the notch".
     private(set) var pillSize: CGSize = .zero
 
-    let contentSizeChanged = PassthroughSubject<CGSize, Never>()
-
     func report(contentSize size: CGSize) {
-        guard size != contentSize else { return }
         contentSize = size
-        contentSizeChanged.send(size)
     }
 
     func report(pillSize size: CGSize) {

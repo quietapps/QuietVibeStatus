@@ -2,6 +2,7 @@ import SwiftUI
 
 struct NotificationsPane: View {
     @EnvironmentObject private var prefs: Preferences
+    @ObservedObject private var notifier = ApprovalNotifier.shared
     @State private var newDirectoryFilter = ""
     @State private var newPromptFilter = ""
 
@@ -25,6 +26,39 @@ struct NotificationsPane: View {
                     .labelsHidden()
                     .frame(width: 200)
                 }
+            }
+
+            SettingsGroup(title: "Approval banners") {
+                SettingsRow(
+                    title: "Notification Center banners",
+                    subtitle: "Allow and Deny appear on the banner itself, so a blocked agent reaches you in fullscreen or on another display. Quiet scenes still silence them."
+                ) {
+                    Picker("", selection: approvalNotificationBinding) {
+                        ForEach(ApprovalNotificationPolicy.allCases, id: \.self) { policy in
+                            Text(policy.title).tag(policy)
+                        }
+                    }
+                    .labelsHidden()
+                    .frame(width: 220)
+                }
+                if prefs.approvalNotifications != .never, !notifier.isAuthorized {
+                    SettingsRow(
+                        title: "Notifications are not allowed yet",
+                        subtitle: "macOS asks the first time an agent blocks. If you dismissed that prompt, turn Quiet Vibe Status on in System Settings → Notifications."
+                    ) {
+                        Button("Open System Settings") {
+                            let url = URL(
+                                string: "x-apple.systempreferences:com.apple.preference.notifications"
+                            )
+                            if let url { NSWorkspace.shared.open(url) }
+                        }
+                    }
+                }
+                SettingsToggleRow(
+                    title: "Flag risky commands",
+                    subtitle: "Marks approval cards whose command deletes outside the project, pipes a download into a shell, force-pushes, or touches credentials. Advisory only — nothing is blocked.",
+                    isOn: $prefs.showRiskWarnings
+                )
             }
 
             SettingsGroup(title: "Quiet scenes") {
@@ -75,6 +109,17 @@ struct NotificationsPane: View {
                 )
             }
         }
+    }
+
+    private var approvalNotificationBinding: Binding<ApprovalNotificationPolicy> {
+        Binding(
+            get: { prefs.approvalNotifications },
+            set: { policy in
+                prefs.approvalNotifications = policy
+                // Turning it on here is the one place the prompt makes sense before an agent blocks.
+                if policy != .never { notifier.requestAuthorizationIfNeeded() }
+            }
+        )
     }
 
     private var subagentBinding: Binding<SubagentNotificationPolicy> {

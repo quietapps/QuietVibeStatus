@@ -71,6 +71,22 @@ final class Preferences: ObservableObject {
         set { subagentNotificationsRaw = newValue.rawValue }
     }
 
+    /// Banner notifications for requests that are blocking an agent.
+    ///
+    /// Defaults to the panel-can't-be-seen case: the notch is the right place to answer when you can
+    /// see it, and a banner on top of a visible card is just noise. In fullscreen, or on a Mac whose
+    /// panel is on another display, there is nothing to see and the banner is the whole point.
+    @Stored("approvalNotifications", default: ApprovalNotificationPolicy.whenPanelHidden.rawValue)
+    var approvalNotificationsRaw: String
+
+    var approvalNotifications: ApprovalNotificationPolicy {
+        get { ApprovalNotificationPolicy(rawValue: approvalNotificationsRaw) ?? .whenPanelHidden }
+        set { approvalNotificationsRaw = newValue.rawValue }
+    }
+
+    /// Flag destructive-looking commands on approval cards.
+    @Stored("showRiskWarnings", default: true) var showRiskWarnings: Bool
+
     // MARK: Quiet scenes
 
     @Stored("quietInFocusMode", default: false) var quietInFocusMode: Bool
@@ -219,6 +235,20 @@ enum DisplayTarget: String, CaseIterable {
         case .followFocus: return "Follow Focus"
         case .builtIn: return "Built-in Display"
         case .allDisplays: return "All Displays"
+        }
+    }
+}
+
+enum ApprovalNotificationPolicy: String, CaseIterable {
+    case never
+    case whenPanelHidden
+    case always
+
+    var title: String {
+        switch self {
+        case .never: return "Never"
+        case .whenPanelHidden: return "When the panel can't be seen"
+        case .always: return "Always"
         }
     }
 }

@@ -2,6 +2,54 @@
 
 All notable changes to Quiet Vibe Status. Dates are the day the version was cut.
 
+## 1.0.8 — 23 Jul 2026
+
+### Added
+
+- **Notification Center banners for blocking requests** — Allow, Always allow and Deny sit on the
+  banner itself, so an agent waiting on you still gets through while you are in a fullscreen editor
+  or looking at a display the panel isn't on. Answering from a banner resolves the same request the
+  card would have, and never brings the app to the front. Plans get Approve and Reject; a structured
+  question only offers to open the panel, because its options and free-text answers can't be
+  represented honestly on a banner. Off during quiet scenes, and set by default to appear only when
+  the panel can't be seen — Settings → **Notifications** → **Approval banners**
+- **Diff preview on Edit, MultiEdit and Write cards** — the lines that change, with a little context
+  and long unchanged runs collapsed, instead of the raw tool JSON with the old and new text quoted
+  end to end
+- **Risk strip on permission cards** — marks commands that delete outside the project, pipe a
+  download straight into a shell, force-push, run as root, write to system locations, or touch
+  credentials and private keys. Advisory only: nothing is blocked, and it is deliberately quiet on
+  everyday work, since a warning that fires on `git status` is a warning you stop reading. Toggle in
+  Settings → **Notifications**
+- **Allow all / Deny all** for one session's queued permissions. Scoped to that session and to
+  permissions only — plans and questions each still need their own answer — and Deny all asks for
+  confirmation, because a denial the agent treats as a refusal is not as recoverable as an approval
+
+### Fixed
+
+- **Cards that outlived the decision** — a blocking request holds its hook connection open, and that
+  connection *is* the agent's wait, but nothing watched it while you decided. If the agent stopped
+  waiting — you answered the same prompt in its own terminal, the CLI exited, someone pressed
+  Ctrl-C — the app never heard, and the card kept offering Allow and Deny for a settled question
+  until the approval timeout swept it up minutes later. The connection is now watched for a hangup,
+  which clears the card at once and decides nothing on your behalf
+- **A display where the notch simply didn't work** — each panel's clickable region was pushed to it
+  through a publisher that only fired on change, and the first size was reported while the hosting
+  view was still being installed, before anything was listening. Whichever display lost that race
+  ended up with an empty click region: hovering did nothing, clicking fell through, and it stayed
+  that way until opening the panel on the *other* screen resized the content and finally published a
+  region — which is why using the second display appeared to fix the first. The region is now read
+  when it is needed rather than pushed, so there is no event to miss
+- **Panels hidden for fullscreen still swallowing clicks** — hiding faded the window to fully
+  transparent, and a transparent window still hit-tests, so the pill's footprint kept eating clicks
+  meant for the app underneath on a screen showing nothing
+- **Quota badge never appearing** — being installed is two things, Claude's status line pointing at
+  our script and the script existing, and only the first survived the support folder being cleared or
+  replaced. The check looked at the setting alone, so a missing script still reported as installed:
+  Claude ran a command that wasn't there, no usage was ever written, the badge silently stayed away,
+  and the Usage pane insisted the bridge was fine. The script is now verified and redeployed on every
+  launch, the same repair the hook bridge has always had
+
 ## 1.0.7 — 22 Jul 2026
 
 ### Fixed

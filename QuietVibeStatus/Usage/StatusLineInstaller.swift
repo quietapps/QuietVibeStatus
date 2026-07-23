@@ -37,15 +37,36 @@ final class StatusLineInstaller: ObservableObject {
         refresh()
     }
 
+    /// Re-reads the installed state, and repairs it when the settings entry has outlived the script.
+    ///
+    /// Being "installed" is two things — Claude's `statusLine` pointing at us, and our script being
+    /// on disk — and only the first survives the support folder being cleared or replaced. The check
+    /// used to look at the settings alone, so a missing script still reported as installed: Claude
+    /// ran a command that wasn't there, wrote no usage file, and the quota badge silently never
+    /// appeared, with the Usage pane insisting the bridge was fine. The script is bundled with the
+    /// app, so redeploying it needs no permission and no settings write.
     func refresh() {
         guard let root = readSettings(),
               let statusLine = root["statusLine"] as? [String: Any],
-              let command = statusLine["command"] as? String
+              let command = statusLine["command"] as? String,
+              command.contains("quiet-vibe-statusline")
         else {
             isInstalled = false
             return
         }
-        isInstalled = command.contains("quiet-vibe-statusline")
+
+        if !FileManager.default.fileExists(atPath: Self.scriptPath) {
+            do {
+                try deployScript()
+                Log.usage.info("status line script was missing; redeployed it")
+            } catch {
+                Log.usage.error("status line repair failed: \(error.localizedDescription)")
+                isInstalled = false
+                return
+            }
+        }
+
+        isInstalled = true
     }
 
     func install() {

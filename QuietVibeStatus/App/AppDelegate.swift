@@ -24,6 +24,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             IntegrationManager.shared.syncOnLaunch()
             GlobalHotKeys.shared.start()
             UsageStore.shared.start()
+            ApprovalNotifier.shared.start()
 
             if !Preferences.shared.hasCompletedOnboarding {
                 OnboardingWindowController.shared.show()

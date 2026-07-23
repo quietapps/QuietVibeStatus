@@ -58,6 +58,19 @@ struct ExpandedPanel: View {
         min(listHeight.rounded(.up), heightAllowance)
     }
 
+    /// The "3 requests from this session" bar, shown once above the first card of a queue.
+    @ViewBuilder
+    private func batchBar(for request: ApprovalRequest) -> some View {
+        let queue = registry.batchablePermissions(for: request.sessionID)
+        if queue.count > 1, queue.first?.id == request.id {
+            BatchApprovalBar(
+                sessionID: request.sessionID,
+                count: queue.count,
+                project: store.session(id: request.sessionID)?.projectName
+            )
+        }
+    }
+
     /// The content genuinely doesn't fit. The one-point slack absorbs sub-pixel measurement jitter
     /// so the elapsed-time tick can't toggle the indicator on and off between hovers.
     private var isScrollable: Bool {
@@ -70,6 +83,9 @@ struct ExpandedPanel: View {
                 LazyVStack(spacing: Theme.s2) {
                     // Anything waiting on a decision goes first — that's why the panel opened.
                     ForEach(registry.requests) { request in
+                        // The bar sits above the first card of a session that has several queued,
+                        // so a batch decision reads as covering the cards under it.
+                        batchBar(for: request)
                         ApprovalCard(request: request)
                             .id("approval-\(request.id)")
                     }

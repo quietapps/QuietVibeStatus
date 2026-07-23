@@ -177,6 +177,11 @@ final class IntegrationManager: ObservableObject {
             }
         }
 
+        // The status line bridge is the only source of Claude's rate limits, and its script lives in
+        // the same folder as the bridge — so it needs the same every-launch repair. Without this it
+        // was deployed once, at install, and never again.
+        StatusLineInstaller.shared.refresh()
+
         refreshStatus()
         refreshRivalHooks()
     }

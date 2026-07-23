@@ -35,7 +35,7 @@ in. Click a card and the exact terminal tab comes forward. No cloud. No account.
 
 ## Features
 
-**Current release:** version **1.0.7**, build **1** — see [CHANGELOG](CHANGELOG.md) for per-build notes
+**Current release:** version **1.0.8**, build **1** — see [CHANGELOG](CHANGELOG.md) for per-build notes
 
 ### Monitor
 
@@ -52,10 +52,15 @@ in. Click a card and the exact terminal tab comes forward. No cloud. No account.
 ### Approve
 
 - **Blocking permission cards** — the actual command in front of you, with Allow, Always allow, Deny, and a hand-back-to-terminal escape hatch
+- **Notification Center banners** carry Allow and Deny themselves, so a blocked agent still reaches you in fullscreen or on a display the panel isn't on — answering the banner never brings the app to the front
+- **Diff preview** for Edit, MultiEdit, and Write — the changed lines, not the raw tool JSON
+- **Risk strip** on commands that delete outside the project, pipe a download into a shell, force-push, run as root, or touch credentials. Advisory only: nothing is ever blocked, and it stays silent on ordinary work
+- **Batch decisions** — one session with several queued permissions gets an Allow all / Deny all bar, scoped to that session and to permissions
 - **Scoped "Always allow"** — approving `npm test` doesn't approve all of `npm`
 - **Plan review** — Markdown rendering, approve, approve with auto-accepted edits, or reject with written feedback
 - **Paginated question wizard** for structured multi-question prompts, including free-text answers
 - Quitting the app mid-approval releases the agent instead of hanging it
+- **Cards clear themselves** when the agent stops waiting — answered in its own terminal, or the CLI exited
 - **Approvals hand themselves back** after a configurable wait, so a card you never saw cannot block an agent all day
 
 ### Jump
@@ -313,7 +318,7 @@ No external dependencies — Apple frameworks only (SwiftUI, AppKit, AppleScript
 All settings are in **Settings** (menu bar icon → **Settings…**), across ten panes: **General**
 (hover, dwell, auto-hide, cleanup, session restore, approval timeout), **Integrations** (per-agent
 hook toggles, competing-monitor cleanup, repair, uninstall), **Notifications** (completion behavior,
-quiet scenes, directory and prompt filters), **Display** (clean or detailed pill, which displays
+approval banners, risk warnings, quiet scenes, directory and prompt filters), **Display** (clean or detailed pill, which displays
 carry the pill, panel size, reveal height, card fields, project grouping, token cost, notch
 alignment), **Sound**, **Usage**, **History** (finished
 sessions and cost summary), **Shortcuts**, **Labs**, **About**.

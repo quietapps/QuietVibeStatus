@@ -34,7 +34,6 @@ final class NotchController: ObservableObject {
     /// holds a single entry that moves as the target changes.
     private var panels: [CGDirectDisplayID: NotchPanel] = [:]
     private var interactions: [CGDirectDisplayID: NotchInteractionModel] = [:]
-    private var panelSubscriptions: [CGDirectDisplayID: AnyCancellable] = [:]
     private var hiddenScreens: Set<CGDirectDisplayID> = []
 
     private var dwellTask: Task<Void, Never>?
@@ -152,7 +151,6 @@ final class NotchController: ObservableObject {
             panel.orderOut(nil)
             panels.removeValue(forKey: id)
             interactions.removeValue(forKey: id)
-            panelSubscriptions.removeValue(forKey: id)
             metricsByScreen.removeValue(forKey: id)
             hiddenScreens.remove(id)
         }
@@ -179,26 +177,27 @@ final class NotchController: ObservableObject {
             .environmentObject(store)
             .environmentObject(prefs)
 
+        // Only the region SwiftUI actually painted takes mouse events; everything else in this
+        // oversized transparent panel belongs to whatever is behind it. Read on demand, so a size
+        // reported while the hosting view is still being installed can't be missed.
+        container.activeRegion = { [weak panel] in
+            guard let panel else { return .zero }
+            let size = interaction.contentSize
+            let w = max(size.width, 1)
+            let h = max(size.height, 1)
+            return CGRect(
+                x: (panel.frame.width - w) / 2,
+                y: panel.frame.height - h,
+                width: w,
+                height: h
+            )
+        }
+
         let hosting = FirstMouseHostingView(rootView: root)
         hosting.autoresizingMask = [.width, .height]
         hosting.frame = container.bounds
         container.addSubview(hosting)
         panel.contentView = container
-
-        // Keep the passthrough region in sync with what SwiftUI actually painted.
-        panelSubscriptions[id] = interaction.contentSizeChanged
-            .receive(on: RunLoop.main)
-            .sink { [weak container, weak panel] size in
-                guard let container, let panel else { return }
-                let w = max(size.width, 1)
-                let h = max(size.height, 1)
-                container.activeRect = CGRect(
-                    x: (panel.frame.width - w) / 2,
-                    y: panel.frame.height - h,
-                    width: w,
-                    height: h
-                )
-            }
 
         return panel
     }
@@ -231,11 +230,23 @@ final class NotchController: ObservableObject {
             guard hide != wasHidden else { continue }
 
             if hide { hiddenScreens.insert(id) } else { hiddenScreens.remove(id) }
+            // A fully transparent window still hit-tests. Without this, a panel hidden for
+            // fullscreen kept eating clicks over the pill's footprint on a screen showing nothing.
+            panel.ignoresMouseEvents = hide
             NSAnimationContext.runAnimationGroup { context in
                 context.duration = 0.2
                 panel.animator().alphaValue = hide ? 0 : 1
             }
         }
+    }
+
+    /// Whether a panel is on screen anywhere the user could actually see it.
+    ///
+    /// False when every panel is hidden — fullscreen on each display, or auto-hidden — which is
+    /// exactly when a blocking request needs to reach you some other way.
+    var panelIsVisible: Bool {
+        guard !panels.isEmpty else { return false }
+        return hiddenScreens.count < panels.count
     }
 
     // MARK: - Expansion
@@ -342,8 +353,20 @@ final class NotchController: ObservableObject {
     ///
     /// Uses the stable pill footprint rather than the morphing content size, so it stays honest
     /// while the panel is animating open or shut.
+    ///
+    /// A panel that has not reported its pill yet falls back to the notch's own metrics instead of
+    /// counting as "pointer isn't here". Reporting is what proves the panel has laid out, and on a
+    /// second display that can lag behind the first — treating unmeasured as absent left that screen
+    /// refusing to open until something else made it lay out.
     private var pointerIsOverPill: Bool {
-        pointerIsOver { interactions[$0]?.pillSize }
+        pointerIsOver { id in
+            if let measured = interactions[id]?.pillSize, measured.width > 1, measured.height > 1 {
+                return measured
+            }
+            guard let metrics = metricsByScreen[id] else { return nil }
+            // Same fallback the pill view uses before it has drawn once.
+            return CGSize(width: metrics.size.width + 68, height: metrics.size.height)
+        }
     }
 
     private func pointerIsOver(_ size: (CGDirectDisplayID) -> CGSize?) -> Bool {

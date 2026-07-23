@@ -108,22 +108,32 @@ final class BridgeServer {
         let clientFD = accept(listenFD, nil, nil)
         guard clientFD >= 0 else { return }
 
+        // Writing to a hook that has already gone away must fail as EPIPE, not raise SIGPIPE and
+        // take the app down with it.
+        var on: Int32 = 1
+        setsockopt(clientFD, SOL_SOCKET, SO_NOSIGPIPE, &on, socklen_t(MemoryLayout<Int32>.size))
+
         queue.async { [weak self] in
             self?.handle(clientFD: clientFD)
         }
     }
 
     private func handle(clientFD: Int32) {
-        defer { close(clientFD) }
-
-        guard let line = readLine(from: clientFD), !line.isEmpty else { return }
-        guard let data = line.data(using: .utf8) else { return }
+        guard let line = readLine(from: clientFD), !line.isEmpty else {
+            close(clientFD)
+            return
+        }
+        guard let data = line.data(using: .utf8) else {
+            close(clientFD)
+            return
+        }
 
         let envelope: HookEnvelope
         do {
             envelope = try JSONDecoder().decode(HookEnvelope.self, from: data)
         } catch {
             Log.bridge.error("undecodable envelope: \(error.localizedDescription)")
+            close(clientFD)
             return
         }
 
@@ -132,13 +142,50 @@ final class BridgeServer {
         let semaphore = DispatchSemaphore(value: 0)
         var response = "{}"
 
-        Task {
+        let work = Task {
             response = await HookRouter.shared.handle(envelope)
             semaphore.signal()
         }
+
+        let hangup = watchForHangup(on: clientFD) { work.cancel() }
+
         semaphore.wait()
 
         write(response + "\n", to: clientFD)
+
+        // The source owns the descriptor once it exists: closing it out from under dispatch is a
+        // use-after-close, so the cancel handler does it and we wait for that to land.
+        if let hangup {
+            let closed = DispatchSemaphore(value: 0)
+            hangup.setCancelHandler {
+                close(clientFD)
+                closed.signal()
+            }
+            hangup.cancel()
+            closed.wait()
+        } else {
+            close(clientFD)
+        }
+    }
+
+    /// Calls `onHangup` if the hook closes the connection while we are still deciding.
+    ///
+    /// A blocking request holds the connection open for as long as the card is on screen, and until
+    /// now nothing watched it. When the agent stopped waiting — you answered the same prompt in its
+    /// own terminal, or the CLI exited — the card stayed up offering buttons for a settled question.
+    /// Readable-with-nothing-to-read is EOF, which is the agent hanging up.
+    private func watchForHangup(on fd: Int32, onHangup: @escaping () -> Void) -> DispatchSourceRead? {
+        let source = DispatchSource.makeReadSource(fileDescriptor: fd, queue: queue)
+        source.setEventHandler {
+            var byte: UInt8 = 0
+            let peeked = recv(fd, &byte, 1, MSG_PEEK)
+            // >0 is a hook sending more than it should; harmless, and not our cue to give up.
+            guard peeked == 0 else { return }
+            Log.bridge.info("hook hung up while a request was pending")
+            onHangup()
+        }
+        source.resume()
+        return source
     }
 
     /// Reads bytes until the first newline. Hook payloads are always one line (the bridge script
