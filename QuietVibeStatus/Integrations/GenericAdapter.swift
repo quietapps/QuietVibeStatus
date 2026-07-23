@@ -96,6 +96,15 @@ struct GenericAdapter: AgentAdapter {
                 SessionStore.shared.upsert(id: sessionID, agent: kind, cwd: cwd) { session in
                     session.lastActivityAt = Date()
                 }
+                // Same as Claude: a finished tool call clears a card still asking about it, which
+                // means it was answered in the agent's own terminal.
+                if let tool = payload["tool_name"].stringValue {
+                    PendingRequestRegistry.shared.settleExternally(
+                        sessionID: sessionID,
+                        tool: tool,
+                        input: payload["tool_input"]
+                    )
+                }
             }
 
         case .permissionRequest:

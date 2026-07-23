@@ -82,6 +82,27 @@ final class PendingRequestRegistry: ObservableObject {
         }
     }
 
+    /// Clear a card whose tool call has already run.
+    ///
+    /// The agent reports every completed tool call, and a completion for a call we are still asking
+    /// about means the decision was made somewhere else — you answered the same prompt in the
+    /// agent's own terminal. The card is then stale: it offers Allow and Deny for something that has
+    /// already happened, and until now it sat there until the approval timeout swept it up.
+    ///
+    /// Resolved as `.defer_`, which is the truth — this app decided nothing. Only the oldest match
+    /// is cleared, so an agent running the same command twice in parallel loses one card per
+    /// completion rather than both at once.
+    func settleExternally(sessionID: String, tool: String, input: JSONValue) {
+        let match = requests.first { request in
+            guard request.sessionID == sessionID else { return false }
+            guard case let .permission(pendingTool, pendingInput) = request.kind else { return false }
+            return pendingTool == tool && pendingInput == input
+        }
+        guard let match else { return }
+        DebugLog.write("registry: \(match.id) already ran — answered outside the panel")
+        resolve(match.id, with: .defer_)
+    }
+
     /// Answer every queued *permission* request from one session the same way.
     ///
     /// An agent working through a list can stack up several permissions before you look, and

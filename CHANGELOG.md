@@ -2,6 +2,40 @@
 
 All notable changes to Quiet Vibe Status. Dates are the day the version was cut.
 
+## 1.0.9 — 23 Jul 2026
+
+A follow-up to 1.0.8 that fixes the notch panel's mouse handling from the ground up. 1.0.8 tried to
+give clicks back to the app behind the panel by resizing the window and by dropping clicks in a
+hit-test override; both were wrong, and between them they made the pill jump, refuse to open, and
+swallow clicks over a large empty area. This release replaces all of that with one mechanism.
+
+### Fixed
+
+- **A dead zone that ate clicks under the notch** — the panel window is always the size of the *open*
+  panel, so most of it is transparent, and those transparent pixels still belonged to the app: a
+  click below the pill hit nothing, or triggered Mission Control over the desktop, instead of
+  reaching the window underneath. The transparent region is now genuinely click-through, so only
+  what the panel actually paints — the pill, or the open panel — takes a click
+- **The pill jumping sideways on hover, and often not opening** — the earlier fix resized the window
+  on every open and close. Each resize rebuilt the window's mouse-tracking, which fired a stray
+  hover event, which drove another open or close: the panel flapped several times a second and the
+  pill visibly slid left as the window re-centred. The window is now a single fixed size and never
+  resizes, so there is nothing to flap
+- **Clicking a session card doing nothing, or acting on the app behind** — while the panel was open,
+  a second, stale idea of "what is clickable" dropped clicks that had already reached the window, so
+  they fell through to whatever was behind — the desktop (Mission Control) or another app. Clicks on
+  cards, and on Allow / Deny, now land on the panel
+- **Approval and completion panels opening un-clickable** — a panel that opens on its own appears
+  under a pointer that never moved, so nothing armed it for input; the card was visible but its
+  buttons weren't. Opening now arms the panel whether or not the pointer moved
+
+### Changed
+
+- **Lower idle CPU while an agent is working** — the open panel was kept laid out at all times, even
+  collapsed and invisible, so the activity animation re-rendered every session card, diff, and risk
+  strip 60 times a second for nobody. The panel is now built only while it is on screen, cutting
+  steady-state CPU several-fold
+
 ## 1.0.8 — 23 Jul 2026
 
 ### Added

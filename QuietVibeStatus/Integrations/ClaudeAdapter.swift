@@ -76,6 +76,15 @@ struct ClaudeAdapter: AgentAdapter {
                         session.lastActivity = "Tool failed"
                     }
                 }
+                // The tool ran, so any card still asking about that same call was answered in the
+                // agent's own terminal while we were waiting.
+                if let tool = payload["tool_name"].stringValue {
+                    PendingRequestRegistry.shared.settleExternally(
+                        sessionID: sessionID,
+                        tool: tool,
+                        input: payload["tool_input"]
+                    )
+                }
             }
 
         case "Notification":

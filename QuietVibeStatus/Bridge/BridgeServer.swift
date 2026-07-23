@@ -142,50 +142,26 @@ final class BridgeServer {
         let semaphore = DispatchSemaphore(value: 0)
         var response = "{}"
 
-        let work = Task {
+        // Deliberately not watching this connection for the agent giving up on us.
+        //
+        // 1.0.8 did: read-EOF looked like the hook hanging up, so a card could clear itself when the
+        // same prompt was answered in the agent's own terminal. It cannot work over this transport.
+        // The bridge script pipes through `nc -U`, and `nc` shuts down its write half the moment the
+        // payload is written — so EOF arrives on *every* request, immediately, while the hook is
+        // still very much waiting for its answer. Every blocking request was cancelled on arrival:
+        // no card ever appeared, and the permanently-readable descriptor spun the dispatch source
+        // flat out. `POLLHUP` does not separate the two cases either — on a Darwin Unix socket a
+        // peer's half-close and a full close both raise `POLLIN|POLLHUP`. Detecting this needs the
+        // hook side to hold its write half open, which means changing the deployed script, so it
+        // waits for a release that can carry that.
+        Task {
             response = await HookRouter.shared.handle(envelope)
             semaphore.signal()
         }
-
-        let hangup = watchForHangup(on: clientFD) { work.cancel() }
-
         semaphore.wait()
 
         write(response + "\n", to: clientFD)
-
-        // The source owns the descriptor once it exists: closing it out from under dispatch is a
-        // use-after-close, so the cancel handler does it and we wait for that to land.
-        if let hangup {
-            let closed = DispatchSemaphore(value: 0)
-            hangup.setCancelHandler {
-                close(clientFD)
-                closed.signal()
-            }
-            hangup.cancel()
-            closed.wait()
-        } else {
-            close(clientFD)
-        }
-    }
-
-    /// Calls `onHangup` if the hook closes the connection while we are still deciding.
-    ///
-    /// A blocking request holds the connection open for as long as the card is on screen, and until
-    /// now nothing watched it. When the agent stopped waiting — you answered the same prompt in its
-    /// own terminal, or the CLI exited — the card stayed up offering buttons for a settled question.
-    /// Readable-with-nothing-to-read is EOF, which is the agent hanging up.
-    private func watchForHangup(on fd: Int32, onHangup: @escaping () -> Void) -> DispatchSourceRead? {
-        let source = DispatchSource.makeReadSource(fileDescriptor: fd, queue: queue)
-        source.setEventHandler {
-            var byte: UInt8 = 0
-            let peeked = recv(fd, &byte, 1, MSG_PEEK)
-            // >0 is a hook sending more than it should; harmless, and not our cue to give up.
-            guard peeked == 0 else { return }
-            Log.bridge.info("hook hung up while a request was pending")
-            onHangup()
-        }
-        source.resume()
-        return source
+        close(clientFD)
     }
 
     /// Reads bytes until the first newline. Hook payloads are always one line (the bridge script

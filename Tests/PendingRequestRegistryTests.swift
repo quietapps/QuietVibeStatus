@@ -36,6 +36,64 @@ final class PendingRequestRegistryTests: XCTestCase {
         )
     }
 
+    // MARK: - Settled elsewhere
+
+    /// The agent reporting that a tool ran means the same prompt was answered in its own terminal,
+    /// so the card asking about that call is stale and must go.
+    func testACompletedToolClearsItsPendingCard() async {
+        let parked = Task { await registry.park(request()) }
+        await waitForPending(count: 1)
+
+        registry.settleExternally(
+            sessionID: "s-1",
+            tool: "Bash",
+            input: HookFixtures.json(["command": "ls"])
+        )
+
+        let outcome = await parked.value
+        if case .defer_ = outcome {} else { XCTFail("expected .defer_, got \(outcome)") }
+        XCTAssertTrue(registry.requests.isEmpty)
+    }
+
+    /// A different command finishing says nothing about the one still being asked about.
+    func testADifferentToolCallLeavesTheCardAlone() async {
+        let parked = Task { await registry.park(request()) }
+        await waitForPending(count: 1)
+
+        registry.settleExternally(
+            sessionID: "s-1",
+            tool: "Bash",
+            input: HookFixtures.json(["command": "rm -rf /"])
+        )
+        registry.settleExternally(
+            sessionID: "s-2",
+            tool: "Bash",
+            input: HookFixtures.json(["command": "ls"])
+        )
+
+        XCTAssertEqual(registry.requests.map(\.id), ["req-1"])
+        registry.resolve("req-1", with: .allow)
+        _ = await parked.value
+    }
+
+    /// Two identical calls in flight: one completion clears one card, not both.
+    func testIdenticalCallsClearOneAtATime() async {
+        let first = Task { await registry.park(request(id: "req-1")) }
+        let second = Task { await registry.park(request(id: "req-2")) }
+        await waitForPending(count: 2)
+
+        registry.settleExternally(
+            sessionID: "s-1",
+            tool: "Bash",
+            input: HookFixtures.json(["command": "ls"])
+        )
+        _ = await first.value
+
+        XCTAssertEqual(registry.requests.map(\.id), ["req-2"])
+        registry.resolve("req-2", with: .allow)
+        _ = await second.value
+    }
+
     // MARK: - Batch
 
     func testAllowAllResolvesEveryPermissionInTheSession() async {
@@ -138,10 +196,12 @@ final class PendingRequestRegistryTests: XCTestCase {
         _ = await second.value
     }
 
-    /// The hook hanging up — you answered in the agent's own terminal, or the CLI exited — cancels
-    /// the task awaiting the card. The card must go with it instead of offering buttons for a
-    /// question that is already settled.
-    func testAgentHangingUpClearsTheCard() async {
+    /// Cancelling the task that awaits a card must take the card with it.
+    ///
+    /// Nothing in the bridge cancels today — 1.0.8 tried to, from socket EOF, and had to be reverted
+    /// because `nc` half-closes on every request and EOF therefore means nothing. This stays as the
+    /// contract any future canceller has to meet: release the hook, decide nothing, drop the card.
+    func testCancellingAParkedRequestClearsTheCard() async {
         prefs.approvalTimeoutMinutes = 0
 
         let parked = Task { await registry.park(request()) }

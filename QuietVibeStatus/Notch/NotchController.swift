@@ -50,6 +50,12 @@ final class NotchController: ObservableObject {
         CGSize(width: prefs.maxPanelWidth + 80, height: prefs.maxPanelHeight + 80)
     }
 
+    /// Watches the pointer while the panels are click-through, so they can be armed before it
+    /// arrives — see `updatePassthrough`.
+    private var pointerMonitor: Any?
+    /// Which panels currently accept mouse events, so the flag is only written when it changes.
+    private var interactivePanels: Set<CGDirectDisplayID> = []
+
     private init() {}
 
     // MARK: - Lifecycle
@@ -82,6 +88,35 @@ final class NotchController: ObservableObject {
             .sink { [weak self] _ in self?.refreshVisibility() }
             .store(in: &cancellables)
 
+        // The panels are click-through except where the pointer is actually over what they paint.
+        //
+        // This replaces resizing the window to match the content. Resizing worked — the dead zone
+        // went away — but every resize rebuilds the window's tracking areas, and the spurious hover
+        // enter/exit that produced drove the presentation, which resized the window again: the panel
+        // flapped open and shut tens of times a second. A fixed window with a moving passthrough
+        // flag has no such loop, and `hitTest` alone can't do it because returning nil drops a click
+        // rather than passing it to the window underneath.
+        pointerMonitor = NSEvent.addGlobalMonitorForEvents(
+            matching: [.mouseMoved, .leftMouseDragged]
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.updatePassthrough()
+            }
+        }
+        updatePassthrough()
+
+        // A panel that opens on its own — an approval, a completion reveal — appears under a
+        // pointer that never moved, so no pointer event will arrive to arm it. Without this the
+        // card was visible but its buttons weren't clickable: the clicks went straight through to
+        // the window behind.
+        $presentation
+            .removeDuplicates()
+            .sink { [weak self] _ in
+                // After the state has settled into the frame SwiftUI will draw for it.
+                Task { @MainActor in self?.updatePassthrough() }
+            }
+            .store(in: &cancellables)
+
         // Outside-click dismissal for completion reveals. A global monitor observes clicks in
         // other apps without consuming them, so this never steals a click from your editor.
         outsideClickMonitor = NSEvent.addGlobalMonitorForEvents(
@@ -100,6 +135,9 @@ final class NotchController: ObservableObject {
                 guard let self else { return }
                 self.refreshVisibility()
                 self.rebuildPanelsIfTargetsChanged()
+                // Backstop: the panel's painted size also changes as cards come and go, which no
+                // pointer event announces.
+                self.updatePassthrough()
             }
         }
     }
@@ -131,17 +169,7 @@ final class NotchController: ObservableObject {
             let panel = panels[id] ?? makePanel(for: id)
             panels[id] = panel
 
-            let size = panelSize
-            panel.setFrame(
-                CGRect(
-                    origin: CGPoint(
-                        x: screen.frame.midX - size.width / 2,
-                        y: screen.frame.maxY - size.height
-                    ),
-                    size: size
-                ),
-                display: false
-            )
+            applyFrame(to: panel, on: screen, id: id)
             panel.orderFrontRegardless()
         }
 
@@ -158,6 +186,94 @@ final class NotchController: ObservableObject {
         refreshVisibility()
     }
 
+    /// Pins one panel's window under the notch at its full, fixed size.
+    ///
+    /// The window is always the size of the open panel, so most of it is transparent. It does not
+    /// resize between states — that path was tried and rejected, because every resize rebuilt the
+    /// window's tracking areas and the spurious hover enter/exit that produced drove the panel to
+    /// flap open and shut. Instead the transparent region is made click-through at runtime by
+    /// `updatePassthrough`, so a fixed-size window still lets clicks reach whatever is behind it.
+    private func applyFrame(to panel: NotchPanel, on screen: NSScreen, id _: CGDirectDisplayID) {
+        let size = panelSize
+        let frame = CGRect(
+            origin: CGPoint(
+                x: screen.frame.midX - size.width / 2,
+                y: screen.frame.maxY - size.height
+            ),
+            size: size
+        )
+        // The window is one fixed size for the life of the panel; only a display change moves it.
+        // Setting a frame it already has would rebuild its tracking areas for nothing.
+        guard panel.frame != frame else { return }
+        panel.setFrame(frame, display: false)
+    }
+
+    /// Lets clicks through wherever a panel isn't painting anything.
+    ///
+    /// A panel is the size of the *open* panel at all times, so most of it is transparent. Those
+    /// transparent points belong to whatever is behind them: `ignoresMouseEvents` is the only thing
+    /// that actually hands the click to the window underneath.
+    ///
+    /// The pointer is watched globally rather than through SwiftUI's hover, because a click-through
+    /// window receives no events at all — it has to be armed *before* the pointer arrives, and the
+    /// global monitor sees the moves that are being delivered to other apps. Once armed, the panel
+    /// takes events normally and SwiftUI's own hover drives the opening.
+    private func updatePassthrough() {
+        let painted = paintedRects()
+        let location = NSEvent.mouseLocation
+
+        for (id, panel) in panels {
+            // A hidden panel is never interactive, whatever the pointer is doing.
+            let interactive = !hiddenScreens.contains(id)
+                && (painted[id]?.contains(location) ?? false)
+
+            guard interactive != interactivePanels.contains(id) else { continue }
+            if interactive { interactivePanels.insert(id) } else { interactivePanels.remove(id) }
+            panel.ignoresMouseEvents = !interactive
+        }
+    }
+
+    /// The interactive region of each panel, in screen coordinates.
+    ///
+    /// Collapsed, that is the pill's own footprint and nothing else — the whole point is that the
+    /// rest of the screen under this oversized window stays clickable.
+    ///
+    /// Expanded, it is the panel's *maximum* footprint, not the measured content. The content height
+    /// animates open over a third of a second and the measurement lags it, so gating on the live
+    /// size left every card below the current height click-through until the animation and the
+    /// measurement caught up — which under a stationary pointer they never did. The max footprint is
+    /// a fixed rectangle available the instant the panel starts opening, so a card is clickable as
+    /// soon as it is visible. Clicks in the transparent margin outside `maxPanelWidth`, or below the
+    /// tallest the panel could be, still pass through.
+    private func paintedRects() -> [CGDirectDisplayID: CGRect] {
+        var rects: [CGDirectDisplayID: CGRect] = [:]
+
+        for (id, panel) in panels {
+            let size: CGSize
+            if presentation == .collapsed {
+                let pill = interactions[id]?.pillSize ?? .zero
+                if pill.width > 1, pill.height > 1 {
+                    size = pill
+                } else if let metrics = metricsByScreen[id] {
+                    size = CGSize(width: metrics.size.width + 68, height: metrics.size.height)
+                } else {
+                    continue
+                }
+            } else {
+                size = CGSize(width: prefs.maxPanelWidth, height: prefs.maxPanelHeight)
+            }
+
+            rects[id] = CGRect(
+                x: panel.frame.midX - size.width / 2,
+                y: panel.frame.maxY - size.height,
+                width: size.width,
+                height: size.height
+            )
+        }
+
+        return rects
+    }
+
     private func rebuildPanelsIfTargetsChanged() {
         let wanted = Set(targetScreens().compactMap(\.displayID))
         guard wanted != Set(panels.keys) else { return }
@@ -171,28 +287,20 @@ final class NotchController: ObservableObject {
 
         let interaction = NotchInteractionModel()
         interactions[id] = interaction
+        // As the panel grows or shrinks under a stationary pointer, re-decide what takes clicks —
+        // otherwise a card the pointer is already sitting over stays click-through until the next
+        // pointer move or the periodic sweep.
+        interaction.onSizeChange = { [weak self] in
+            Task { @MainActor in self?.updatePassthrough() }
+        }
 
         let root = NotchRootView(screenID: id, interaction: interaction)
             .environmentObject(self)
             .environmentObject(store)
             .environmentObject(prefs)
 
-        // Only the region SwiftUI actually painted takes mouse events; everything else in this
-        // oversized transparent panel belongs to whatever is behind it. Read on demand, so a size
-        // reported while the hosting view is still being installed can't be missed.
-        container.activeRegion = { [weak panel] in
-            guard let panel else { return .zero }
-            let size = interaction.contentSize
-            let w = max(size.width, 1)
-            let h = max(size.height, 1)
-            return CGRect(
-                x: (panel.frame.width - w) / 2,
-                y: panel.frame.height - h,
-                width: w,
-                height: h
-            )
-        }
-
+        // Click-through for the transparent parts is handled at the window level (see
+        // `updatePassthrough`), so the container hit-tests normally.
         let hosting = FirstMouseHostingView(rootView: root)
         hosting.autoresizingMask = [.width, .height]
         hosting.frame = container.bounds
@@ -230,14 +338,15 @@ final class NotchController: ObservableObject {
             guard hide != wasHidden else { continue }
 
             if hide { hiddenScreens.insert(id) } else { hiddenScreens.remove(id) }
-            // A fully transparent window still hit-tests. Without this, a panel hidden for
-            // fullscreen kept eating clicks over the pill's footprint on a screen showing nothing.
-            panel.ignoresMouseEvents = hide
             NSAnimationContext.runAnimationGroup { context in
                 context.duration = 0.2
                 panel.animator().alphaValue = hide ? 0 : 1
             }
         }
+
+        // A fully transparent window still hit-tests, so a hidden panel has to stop taking events —
+        // but that flag has one owner, `updatePassthrough`, or the two fight over it.
+        updatePassthrough()
     }
 
     /// Whether a panel is on screen anywhere the user could actually see it.
@@ -258,11 +367,6 @@ final class NotchController: ObservableObject {
 
         guard prefs.expandOnHover, !presentation.isSticky else { return }
         guard presentation != .hovered else { return }
-        // Only what is actually painted may open the notch. SwiftUI reports hover against the
-        // container's animated frame, so while the panel shrinks it sweeps past a stationary
-        // pointer and fires an enter event — which re-opened the notch over empty screen well
-        // below the pill, and then swallowed clicks meant for the app underneath.
-        guard pointerIsOverTrigger else { return }
 
         hoverTask?.cancel()
         hoverTask = Task { [weak self] in
@@ -270,8 +374,11 @@ final class NotchController: ObservableObject {
             let delay = self.prefs.hoverDuration
             try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
             guard !Task.isCancelled else { return }
-            // The pointer can leave during the delay without SwiftUI sending an exit event —
-            // the pill it entered may have shrunk or moved out from under it.
+            // Checked here and nowhere else. SwiftUI reports hover against the container's animated
+            // frame, so a panel shrinking past a stationary pointer fires an enter event from dead
+            // space well below the pill; by the time the hover delay has run, the geometry has
+            // settled and that event can be told apart from a real one. Gating the *arrival* of the
+            // event as well, as 1.0.8 did, only added a way for a legitimate hover to be dropped.
             guard self.pointerIsOverTrigger else { return }
             // No suppression check here on purpose: hovering the notch is a deliberate request to
             // see the panel. Smart suppression exists to stop the panel *auto*-expanding over the
@@ -371,6 +478,11 @@ final class NotchController: ObservableObject {
 
     private func pointerIsOver(_ size: (CGDirectDisplayID) -> CGSize?) -> Bool {
         let location = NSEvent.mouseLocation
+
+        // No usable geometry anywhere means we cannot answer the question. Say yes: a hover the
+        // user actually made must not be dropped because a panel hasn't measured itself yet.
+        let known = panels.keys.compactMap(size).filter { $0.width > 1 && $0.height > 1 }
+        guard !known.isEmpty else { return true }
 
         return panels.contains { id, panel in
             guard let size = size(id), size.width > 1, size.height > 1 else { return false }

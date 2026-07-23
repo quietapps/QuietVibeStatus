@@ -24,6 +24,13 @@ struct NotchRootView: View {
     @State private var panelHeight: CGFloat = 0
     /// Intrinsic size of the collapsed pill, reported by `CollapsedPill`.
     @State private var pillSize: CGSize = .zero
+    /// Whether the open panel is in the view tree at all — see `morphingContent`.
+    ///
+    /// Follows `expanded`, but lags it on the way down so the fade-out is allowed to finish before
+    /// the content is torn out from under it.
+    @State private var showsPanel = false
+    /// Cancels a pending unmount when the panel is reopened mid-fade.
+    @State private var unmountTask: Task<Void, Never>?
 
     private var expanded: Bool { controller.presentation.isExpanded }
 
@@ -53,7 +60,25 @@ struct NotchRootView: View {
             Spacer(minLength: 0)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .onPreferenceChange(PanelHeightKey.self) { panelHeight = $0 }
+        // Zero arrives as the panel unmounts; keeping the last real height means the next open has
+        // somewhere to grow to instead of starting from nothing.
+        .onPreferenceChange(PanelHeightKey.self) { if $0 > 0 { panelHeight = $0 } }
+        .onAppear { showsPanel = expanded }
+        .onChange(of: expanded) { _, isExpanded in
+            unmountTask?.cancel()
+            unmountTask = nil
+
+            guard !isExpanded else {
+                showsPanel = true
+                return
+            }
+
+            unmountTask = Task {
+                try? await Task.sleep(for: .seconds(0.45))
+                guard !Task.isCancelled, !controller.presentation.isExpanded else { return }
+                showsPanel = false
+            }
+        }
         .onPreferenceChange(PillSizeKey.self) {
             pillSize = $0
             // The controller needs the pill footprint to decide whether the pointer is really over
@@ -71,18 +96,29 @@ struct NotchRootView: View {
                 .opacity(expanded ? 0 : 1)
                 .allowsHitTesting(!expanded)
 
-            ExpandedPanel(metrics: metrics)
-                .frame(width: prefs.maxPanelWidth)
-                .background(
-                    GeometryReader { proxy in
-                        Color.clear.preference(key: PanelHeightKey.self, value: proxy.size.height)
-                    }
-                )
-                // Content rises the last few points as it fades in, so the panel reads as unfolding
-                // rather than as a box that blinks into existence at full size.
-                .offset(y: expanded ? 0 : -6)
-                .opacity(expanded ? 1 : 0)
-                .allowsHitTesting(expanded)
+            // Mounted only while the panel is actually on screen.
+            //
+            // It used to stay in the tree permanently so its height was always measured, but the
+            // activity glyph animates continuously whenever an agent is working, and every frame of
+            // that animation drives an AppKit layout pass over the whole hosting view — including
+            // this panel, with every session card, diff preview and risk strip in it, laid out at
+            // full size behind a zero opacity. That was tens of percent of a core spent laying out
+            // something nobody could see. `panelHeight` keeps its last value while unmounted, so the
+            // morph still has a target to open toward.
+            if showsPanel {
+                ExpandedPanel(metrics: metrics)
+                    .frame(width: prefs.maxPanelWidth)
+                    .background(
+                        GeometryReader { proxy in
+                            Color.clear.preference(key: PanelHeightKey.self, value: proxy.size.height)
+                        }
+                    )
+                    // Content rises the last few points as it fades in, so the panel reads as
+                    // unfolding rather than as a box that blinks into existence at full size.
+                    .offset(y: expanded ? 0 : -6)
+                    .opacity(expanded ? 1 : 0)
+                    .allowsHitTesting(expanded)
+            }
         }
         .frame(width: currentSize.width, height: currentSize.height, alignment: .top)
         .background(chrome)

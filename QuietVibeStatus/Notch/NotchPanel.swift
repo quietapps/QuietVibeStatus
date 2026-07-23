@@ -42,28 +42,16 @@ final class NotchPanel: NSPanel {
     override var acceptsFirstResponder: Bool { false }
 }
 
-/// Hosts the SwiftUI notch content and passes clicks through everywhere the content isn't painted.
+/// Hosts the SwiftUI notch content.
 ///
-/// The panel's frame is deliberately much larger than the visible pill so the panel can grow
-/// without an AppKit frame animation fighting the SwiftUI one. That means most of the panel is
-/// transparent, and without this hit-test override those transparent pixels would swallow clicks
-/// meant for the window underneath.
+/// The panel window is deliberately much larger than the visible pill so the content can grow
+/// without an AppKit frame animation fighting the SwiftUI one, which leaves most of the window
+/// transparent. Passing clicks through those transparent pixels is handled at the *window* level by
+/// `NotchController.updatePassthrough` toggling `ignoresMouseEvents`, so this view hit-tests
+/// normally. It used to gate hit-testing here too, against a separately-tracked painted rect — but
+/// two independent notions of "what is clickable" drifted apart, and a click that the window
+/// accepted was then dropped here because this rect was stale, falling through to the app behind.
 final class PassthroughContainerView: NSView {
-    /// The region, in this view's coordinates, that should receive mouse events — asked for at
-    /// hit-test time rather than pushed in.
-    ///
-    /// This used to be a stored rect fed by a Combine subject. The subject published only on
-    /// change, and the first size arrived while the hosting view was being installed — before the
-    /// subscription existed — so on any panel that reported early the rect stayed `.zero` and every
-    /// click fell straight through. That panel then looked dead until something resized its content
-    /// and finally published a rect. Pulling the value can't miss an event it wasn't listening for.
-    var activeRegion: () -> CGRect = { .zero }
-
-    override func hitTest(_ point: NSPoint) -> NSView? {
-        guard activeRegion().contains(convert(point, from: superview)) else { return nil }
-        return super.hitTest(point)
-    }
-
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 }
 
@@ -102,11 +90,21 @@ final class NotchInteractionModel {
     /// the pill's real size in every state — the honest target for "is the pointer over the notch".
     private(set) var pillSize: CGSize = .zero
 
+    /// Called after either size is reported, so the controller can re-evaluate click-through as the
+    /// panel grows or shrinks. A plain closure rather than a publisher: it drives only AppKit state
+    /// (`ignoresMouseEvents`), never a SwiftUI view, so it can't feed back into the layout that
+    /// produced it — which is exactly the loop that made an Observable version of this unusable.
+    var onSizeChange: (() -> Void)?
+
     func report(contentSize size: CGSize) {
+        guard size != contentSize else { return }
         contentSize = size
+        onSizeChange?()
     }
 
     func report(pillSize size: CGSize) {
+        guard size != pillSize else { return }
         pillSize = size
+        onSizeChange?()
     }
 }
